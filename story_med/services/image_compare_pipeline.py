@@ -6,7 +6,9 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
+from story_med.clients.llm_client import call_llm_json
 from story_med.clients.multimodal_llm_client import call_multimodal_json
+from story_med.config.llm_app_config import load_llm_config
 from story_med.config.settings import PROMPTS_DIR, RESULTS_DIR, TMP_DIR
 from story_med.config.vision_app_config import StoryMedVisionConfig
 from story_med.models.case_model import StoryCaseConfig
@@ -47,6 +49,8 @@ def _build_success_report(config: StoryMedVisionConfig, case: StoryCaseConfig, s
     """构建图片评估成功报告。"""
     asset_dir = RESULTS_DIR / "assets" / case.case_id / session_id
     image_design = _read_image_design(asset_dir)
+    design_validation = _validate_image_design(case, image_design)
+    _write_json(design_validation, TMP_DIR / case.case_id / "image_design_validation.json")
     illustration_results = _compare_illustrations(config, case, asset_dir, image_design)
     final_result = _compare_final_image(config, case, asset_dir, image_design)
     passed = all(bool(item["result"].get("overall_passed")) for item in illustration_results) and bool(
@@ -119,6 +123,22 @@ def _build_image_prompt(
 def _prompt_with_payload(payload: Dict[str, Any]) -> str:
     """拼接图片评估 prompt 和输入 JSON。"""
     template = (PROMPTS_DIR / "image_compare.md").read_text(encoding="utf-8")
+    return f"{template}\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
+
+
+def _validate_image_design(case: StoryCaseConfig, image_design: Dict[str, Any]) -> Dict[str, Any]:
+    """审核图片设计大纲的医学和常识合理性。"""
+    llm_config = load_llm_config()
+    payload = {
+        "patient_case": case.case_facts,
+        "image_design": image_design,
+    }
+    return call_llm_json(llm_config, _image_design_validation_prompt(payload))
+
+
+def _image_design_validation_prompt(payload: Dict[str, Any]) -> str:
+    """拼接图片设计审核 prompt 和输入 JSON。"""
+    template = (PROMPTS_DIR / "image_design_validate.md").read_text(encoding="utf-8")
     return f"{template}\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
 
 

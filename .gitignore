@@ -21,3 +21,11 @@ env/
 story_med/results/*.json
 story_med/tmp/
 !story_med/results/.gitignore
+
+#temp
+*/tmp
+
+#results
+*/results
+
+
