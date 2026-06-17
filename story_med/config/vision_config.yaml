@@ -1,0 +1,10 @@
+vision_enabled: true
+vision_provider: openai_compatible
+vision_base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+vision_model: qwen3.7-plus
+vision_timeout_seconds: 120
+vision_max_image_side: 1280
+vision_jpeg_quality: 85
+vision_nhtai_service_name: nhtai_service_azure_gpt
+vision_nhtai_model_version: latest
+vision_nhtai_host_header: ""

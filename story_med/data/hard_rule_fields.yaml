@@ -1,0 +1,38 @@
+hard_rule_fields:
+  disease:
+    name: 核心疾病
+    value_type: string
+    description: 患者主要诊断疾病
+  disease_subtype:
+    name: 疾病亚型
+    value_type: object
+    description: 分子分型、病理分型等关键信息
+    properties:
+      pathology:
+        name: 病理分型
+        value_type: string
+        description: 病理学诊断类型
+      molecular:
+        name: 分子分型
+        value_type: string
+        description: 分子检测结果或关键突变
+  stage:
+    name: 疾病阶段
+    value_type: string
+    description: 肿瘤分期或疾病严重程度
+  gender:
+    name: 性别
+    value_type: string
+    description: 男性/女性
+  age_group:
+    name: 年龄段
+    value_type: string
+    description: 建议不用精确年龄，而是年龄段
+  treatments:
+    name: 核心治疗方式
+    value_type: array
+    description: 真实接受过的治疗
+  outcome:
+    name: 当前疾病状态
+    value_type: string
+    description: 当前结局或疗效状态
