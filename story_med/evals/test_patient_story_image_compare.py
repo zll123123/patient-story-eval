@@ -79,10 +79,16 @@ def test_build_success_report_writes_image_design_validation_file(monkeypatch: p
     monkeypatch.setattr(pipeline, "RESULTS_DIR", tmp_path / "assets_root")
     monkeypatch.setattr(pipeline, "TMP_DIR", tmp_path / "tmp")
     monkeypatch.setattr(pipeline, "_read_image_design", lambda _: {"illustrations": [{"id": 1, "image_path": "a.png"}]})
+    monkeypatch.setattr(pipeline, "_build_consistance_images_payload", lambda asset_dir, image_design: [{"local_path": "dummy.png"}])
     monkeypatch.setattr(
         pipeline,
         "_validate_image_design",
         lambda case, image_design: {"is_passed": False, "summary": "bad design", "issues": [{"issue_id": "1"}]},
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_validate_image_consistance",
+        lambda config, asset_dir, image_design: {"is_passed": False, "summary": "bad", "issues": [{"issue_id": "2"}]},
     )
     monkeypatch.setattr(
         pipeline,
@@ -104,4 +110,99 @@ def test_build_success_report_writes_image_design_validation_file(monkeypatch: p
     assert validation_file.exists()
     assert '"is_passed": false' in validation_file.read_text(encoding="utf-8")
     assert "image_design_validation" not in report
-    assert report["overall_passed"] is False
+    assert report["overall_passed"] is True
+
+
+def test_build_success_report_writes_image_consistance_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """验证图片一致性审核结果单独落盘。"""
+    from story_med.models.case_model import StoryCaseConfig
+    from story_med.services import image_compare_pipeline as pipeline
+
+    case = StoryCaseConfig(
+        case_id="SM_TEST",
+        description="test",
+        creative_brief="brief",
+        case_facts="facts",
+        hard_rules={},
+    )
+
+    monkeypatch.setattr(pipeline, "RESULTS_DIR", tmp_path / "assets_root")
+    monkeypatch.setattr(pipeline, "TMP_DIR", tmp_path / "tmp")
+    monkeypatch.setattr(pipeline, "_read_image_design", lambda _: {"illustrations": [{"id": 1, "image_path": "a.png"}]})
+    monkeypatch.setattr(pipeline, "_build_consistance_images_payload", lambda asset_dir, image_design: [{"local_path": "dummy.png"}])
+    monkeypatch.setattr(pipeline, "_validate_image_design", lambda case, image_design: {"is_passed": True, "summary": "ok", "issues": []})
+    monkeypatch.setattr(
+        pipeline,
+        "_validate_image_consistance",
+        lambda config, asset_dir, image_design: {"is_passed": False, "summary": "bad", "issues": [{"issue_id": "1"}]},
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_compare_illustrations",
+        lambda config, case, asset_dir, image_design: [{"result": {"overall_passed": True}}],
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_compare_final_image",
+        lambda config, case, asset_dir, image_design: {"result": {"overall_passed": True}},
+    )
+
+    class DummyConfig:
+        pass
+
+    report = pipeline._build_success_report(DummyConfig(), case, "session-1")
+
+    validation_file = tmp_path / "tmp" / case.case_id / "image_consistant_validation.json"
+    assert validation_file.exists()
+    assert '"is_passed": false' in validation_file.read_text(encoding="utf-8")
+    assert "image_design_validation" not in report
+    assert "image_consistant_validation" not in report
+
+
+def test_build_success_report_writes_final_image_layout_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """验证最终长图结构审核结果单独落盘。"""
+    from story_med.models.case_model import StoryCaseConfig
+    from story_med.services import image_compare_pipeline as pipeline
+
+    case = StoryCaseConfig(
+        case_id="SM_TEST",
+        description="test",
+        creative_brief="brief",
+        case_facts="facts",
+        hard_rules={},
+    )
+
+    monkeypatch.setattr(pipeline, "RESULTS_DIR", tmp_path / "assets_root")
+    monkeypatch.setattr(pipeline, "TMP_DIR", tmp_path / "tmp")
+    monkeypatch.setattr(pipeline, "_read_image_design", lambda _: {"illustrations": [{"id": 1, "image_path": "a.png"}]})
+    monkeypatch.setattr(pipeline, "_build_consistance_images_payload", lambda asset_dir, image_design: [{"local_path": "dummy.png"}])
+    monkeypatch.setattr(pipeline, "_validate_image_design", lambda case, image_design: {"is_passed": True, "summary": "ok", "issues": []})
+    monkeypatch.setattr(
+        pipeline,
+        "_validate_image_consistance",
+        lambda config, asset_dir, image_design: {"is_passed": True, "summary": "ok", "issues": []},
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_validate_final_image_layout",
+        lambda config, case, asset_dir, image_design: {"status": "success", "is_passed": False, "summary": "bad layout", "issues": [{"issue_id": "1"}]},
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_compare_illustrations",
+        lambda config, case, asset_dir, image_design: [{"result": {"overall_passed": True}}],
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_compare_final_image",
+        lambda config, case, asset_dir, image_design: {"result": {"overall_passed": True}},
+    )
+
+    class DummyConfig:
+        pass
+
+    pipeline._build_success_report(DummyConfig(), case, "session-1")
+
+    validation_file = tmp_path / "tmp" / case.case_id / "final_image_layout_validation.json"
+    assert validation_file.exists()
+    assert '"is_passed": false' in validation_file.read_text(encoding="utf-8")

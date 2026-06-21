@@ -164,8 +164,6 @@ def _build_summary(
         "session_id": run_result.session_id,
         "source_mode": "agent",
         "success": run_result.success,
-        "outline_overall_passed": bool(outline_compare.get("overall_passed")),
-        "story_overall_passed": bool(story_compare.get("overall_passed")),
         "outline_failed_fields": _failed_fields(outline_compare),
         "story_failed_fields": _failed_fields(story_compare),
     }
@@ -184,8 +182,6 @@ def _build_existing_assets_summary(
         "session_id": session_id,
         "source_mode": "results_assets",
         "success": True,
-        "outline_overall_passed": bool(outline_compare.get("overall_passed")),
-        "story_overall_passed": bool(story_compare.get("overall_passed")),
         "outline_failed_fields": _failed_fields(outline_compare),
         "story_failed_fields": _failed_fields(story_compare),
     }
@@ -203,8 +199,6 @@ def _build_case_facts_summary(
         "session_id": "",
         "source_mode": "case_facts",
         "success": True,
-        "outline_overall_passed": bool(outline_compare.get("overall_passed")),
-        "story_overall_passed": bool(story_compare.get("overall_passed")),
         "outline_failed_fields": _failed_fields(outline_compare),
         "story_failed_fields": _failed_fields(story_compare),
     }

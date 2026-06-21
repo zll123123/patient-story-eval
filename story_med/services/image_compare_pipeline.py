@@ -51,6 +51,10 @@ def _build_success_report(config: StoryMedVisionConfig, case: StoryCaseConfig, s
     image_design = _read_image_design(asset_dir)
     design_validation = _validate_image_design(case, image_design)
     _write_json(design_validation, TMP_DIR / case.case_id / "image_design_validation.json")
+    consistant_validation = _validate_image_consistance(config, asset_dir, image_design)
+    _write_json(consistant_validation, TMP_DIR / case.case_id / "image_consistant_validation.json")
+    final_image_layout_validation = _validate_final_image_layout(config, case, asset_dir, image_design)
+    _write_json(final_image_layout_validation, TMP_DIR / case.case_id / "final_image_layout_validation.json")
     illustration_results = _compare_illustrations(config, case, asset_dir, image_design)
     final_result = _compare_final_image(config, case, asset_dir, image_design)
     passed = all(bool(item["result"].get("overall_passed")) for item in illustration_results) and bool(
@@ -106,6 +110,35 @@ def _compare_final_image(
     return {"image_path": str(final_image), "result": result}
 
 
+def _validate_final_image_layout(
+    config: StoryMedVisionConfig,
+    case: StoryCaseConfig,
+    asset_dir: Path,
+    image_design: Dict[str, Any],
+) -> Dict[str, Any]:
+    """审核最终长图是否满足一图读懂的结构与顺序要求。"""
+    prompt_file = PROMPTS_DIR / "final_image_layout_validate.md"
+    if not prompt_file.exists():
+        return {
+            "status": "pending_prompt",
+            "is_passed": False,
+            "summary": f"缺少提示词文件: {prompt_file.name}",
+            "issues": [],
+        }
+    final_image = _find_single_image(asset_dir / "generate_final_image")
+    payload = {
+        "patient_case": case.case_facts,
+        "image_design": image_design,
+    }
+    prompt = _final_image_layout_prompt(prompt_file, payload)
+    result = call_multimodal_json(config, prompt, [final_image])
+    return {
+        "status": "success",
+        "image_path": str(final_image),
+        **result,
+    }
+
+
 def _build_image_prompt(
     case: StoryCaseConfig,
     image_type: str,
@@ -139,6 +172,53 @@ def _validate_image_design(case: StoryCaseConfig, image_design: Dict[str, Any]) 
 def _image_design_validation_prompt(payload: Dict[str, Any]) -> str:
     """拼接图片设计审核 prompt 和输入 JSON。"""
     template = (PROMPTS_DIR / "image_design_validate.md").read_text(encoding="utf-8")
+    return f"{template}\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
+
+
+def _validate_image_consistance(
+    config: StoryMedVisionConfig,
+    asset_dir: Path,
+    image_design: Dict[str, Any],
+) -> Dict[str, Any]:
+    """审核图片与大纲的一致性以及多图全局一致性。"""
+    payload = {
+        "image_design": image_design,
+        "images": _build_consistance_images_payload(asset_dir, image_design),
+    }
+    prompt = _image_consistance_prompt(payload)
+    image_paths = [
+        Path(item["local_path"])
+        for item in payload["images"]
+        if item.get("local_path")
+    ]
+    return call_multimodal_json(config, prompt, image_paths)
+
+
+def _build_consistance_images_payload(asset_dir: Path, image_design: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """构建一致性审核输入，包含设计图与实际图片映射。"""
+    payload: List[Dict[str, Any]] = []
+    for illustration in image_design.get("illustrations") or []:
+        image_path = _find_generated_image(asset_dir / "generate_images", str(illustration.get("image_path") or ""))
+        payload.append(
+            {
+                "image_id": illustration.get("id"),
+                "image_path": str(illustration.get("image_path") or ""),
+                "composition": illustration.get("composition"),
+                "local_path": str(image_path),
+            }
+        )
+    return payload
+
+
+def _image_consistance_prompt(payload: Dict[str, Any]) -> str:
+    """拼接图片与大纲一致性审核 prompt。"""
+    template = (PROMPTS_DIR / "image_consistant_validate.md").read_text(encoding="utf-8")
+    return f"{template}\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
+
+
+def _final_image_layout_prompt(prompt_file: Path, payload: Dict[str, Any]) -> str:
+    """拼接最终长图结构审核 prompt。"""
+    template = prompt_file.read_text(encoding="utf-8")
     return f"{template}\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
 
 
