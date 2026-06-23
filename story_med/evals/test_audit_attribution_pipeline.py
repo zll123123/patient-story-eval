@@ -22,7 +22,7 @@ def test_run_case_audit_attribution_skips_when_all_audits_pass(tmp_path: Path) -
                 "story_passed": True,
                 "image_design_passed": True,
                 "image_consistant_passed": True,
-                "image_compare_passed": True,
+                "image_fact_passed": True,
             },
         },
     )
@@ -51,7 +51,7 @@ def test_run_case_audit_attribution_calls_model_when_any_audit_fails(
                 "story_passed": True,
                 "image_design_passed": True,
                 "image_consistant_passed": False,
-                "image_compare_passed": True,
+                "image_fact_passed": True,
             },
         },
     )
@@ -71,6 +71,20 @@ def test_run_case_audit_attribution_calls_model_when_any_audit_fails(
         return {"root_cause": "test"}
 
     monkeypatch.setattr(pipeline, "call_llm_json", fake_call_llm_json)
+    monkeypatch.setattr(
+        pipeline,
+        "_load_case",
+        lambda case_id: type(
+            "DummyCase",
+            (),
+            {
+                "case_id": case_id,
+                "case_facts": "facts",
+                "creative_brief": "brief",
+            },
+        )(),
+    )
+    monkeypatch.setattr(pipeline, "_load_intermediate_outputs", lambda case_id, session_id: {})
 
     result = pipeline.run_case_audit_attribution(_dummy_llm_config(), "SM_TEST")
 

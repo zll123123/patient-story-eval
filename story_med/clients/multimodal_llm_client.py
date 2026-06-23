@@ -19,9 +19,10 @@ def call_multimodal_json(
     config: StoryMedVisionConfig,
     prompt: str,
     image_paths: List[Path],
+    use_thumbnail: bool = True,
 ) -> Dict[str, Any]:
     """调用多模态模型并解析 JSON。"""
-    content = call_multimodal_text(config, prompt, image_paths)
+    content = call_multimodal_text(config, prompt, image_paths, use_thumbnail=use_thumbnail)
     return normalize_llm_json(content)
 
 
@@ -29,20 +30,35 @@ def call_multimodal_text(
     config: StoryMedVisionConfig,
     prompt: str,
     image_paths: List[Path],
+    use_thumbnail: bool = True,
 ) -> str:
     """调用多模态模型并返回文本。"""
     _validate_config(config)
-    image_urls = [encode_image_to_data_url(path, config.max_image_side, config.jpeg_quality) for path in image_paths]
+    image_urls = [
+        encode_image_to_data_url(
+            path,
+            config.max_image_side,
+            config.jpeg_quality,
+            use_thumbnail=use_thumbnail,
+        )
+        for path in image_paths
+    ]
     if config.provider == "nhtai":
         return _call_nhtai(config, prompt, image_urls)
     return _call_openai_compatible(config, prompt, image_urls)
 
 
-def encode_image_to_data_url(image_path: Path, max_side: int, jpeg_quality: int) -> str:
+def encode_image_to_data_url(
+    image_path: Path,
+    max_side: int,
+    jpeg_quality: int,
+    use_thumbnail: bool = True,
+) -> str:
     """将本地图片压缩并编码为 data URL。"""
     with Image.open(image_path) as image:
         image = image.convert("RGB")
-        image.thumbnail((max_side, max_side))
+        if use_thumbnail:
+            image.thumbnail((max_side, max_side))
         buffer = io.BytesIO()
         image.save(buffer, format="JPEG", quality=jpeg_quality, optimize=True)
     encoded = base64.b64encode(buffer.getvalue()).decode("ascii")

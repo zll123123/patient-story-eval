@@ -97,6 +97,11 @@ def test_build_success_report_writes_image_design_validation_file(monkeypatch: p
     )
     monkeypatch.setattr(
         pipeline,
+        "_validate_final_image_layout",
+        lambda config, case, asset_dir, image_design: {"status": "success", "is_passed": True, "summary": "ok", "issues": []},
+    )
+    monkeypatch.setattr(
+        pipeline,
         "_compare_final_image",
         lambda config, case, asset_dir, image_design: {"result": {"overall_passed": True}},
     )
@@ -140,6 +145,11 @@ def test_build_success_report_writes_image_consistance_file(monkeypatch: pytest.
         pipeline,
         "_compare_illustrations",
         lambda config, case, asset_dir, image_design: [{"result": {"overall_passed": True}}],
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_validate_final_image_layout",
+        lambda config, case, asset_dir, image_design: {"status": "success", "is_passed": True, "summary": "ok", "issues": []},
     )
     monkeypatch.setattr(
         pipeline,
@@ -206,3 +216,43 @@ def test_build_success_report_writes_final_image_layout_file(monkeypatch: pytest
     validation_file = tmp_path / "tmp" / case.case_id / "final_image_layout_validation.json"
     assert validation_file.exists()
     assert '"is_passed": false' in validation_file.read_text(encoding="utf-8")
+
+
+def test_validate_final_image_layout_uses_original_image(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """验证最终长图审核走原图直传，不走缩略图。"""
+    from story_med.models.case_model import StoryCaseConfig
+    from story_med.services import image_compare_pipeline as pipeline
+
+    case = StoryCaseConfig(
+        case_id="SM_TEST",
+        description="test",
+        creative_brief="brief",
+        case_facts="facts",
+        hard_rules={},
+    )
+    asset_dir = tmp_path / "assets"
+    (asset_dir / "generate_final_image").mkdir(parents=True)
+    (asset_dir / "generate_final_image" / "final.png").write_text("x", encoding="utf-8")
+    prompt_file = tmp_path / "final_image_layout_validate.md"
+    prompt_file.write_text("prompt", encoding="utf-8")
+
+    captured: dict = {}
+
+    monkeypatch.setattr(pipeline, "PROMPTS_DIR", tmp_path)
+    monkeypatch.setattr(pipeline, "_find_single_image", lambda _: asset_dir / "generate_final_image" / "final.png")
+    monkeypatch.setattr(
+        pipeline,
+        "call_multimodal_json",
+        lambda config, prompt, image_paths, use_thumbnail=True: captured.update(
+            {"use_thumbnail": use_thumbnail, "image_paths": image_paths}
+        )
+        or {"overall_passed": True},
+    )
+
+    class DummyConfig:
+        pass
+
+    result = pipeline._validate_final_image_layout(DummyConfig(), case, asset_dir, {"illustrations": []})
+
+    assert captured["use_thumbnail"] is False
+    assert result["status"] == "success"

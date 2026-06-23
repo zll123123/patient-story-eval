@@ -131,7 +131,7 @@ def _validate_final_image_layout(
         "image_design": image_design,
     }
     prompt = _final_image_layout_prompt(prompt_file, payload)
-    result = call_multimodal_json(config, prompt, [final_image])
+    result = call_multimodal_json(config, prompt, [final_image], use_thumbnail=False)
     return {
         "status": "success",
         "image_path": str(final_image),
@@ -155,7 +155,7 @@ def _build_image_prompt(
 
 def _prompt_with_payload(payload: Dict[str, Any]) -> str:
     """拼接图片评估 prompt 和输入 JSON。"""
-    template = (PROMPTS_DIR / "image_compare.md").read_text(encoding="utf-8")
+    template = (PROMPTS_DIR / "image_case_consistency_validate.md").read_text(encoding="utf-8")
     return f"{template}\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
 
 

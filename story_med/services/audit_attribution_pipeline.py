@@ -64,7 +64,7 @@ def _build_payload(case_dir: Path, summary: Dict[str, Any], failed_audits: List[
         "story_passed": "story_hard_rule_compare.json",
         "image_design_passed": "image_design_validation.json",
         "image_consistant_passed": "image_consistant_validation.json",
-        "image_compare_passed": "image_compare_result.json",
+        "image_fact_passed": "image_compare_result.json",
         "final_image_layout_passed": "final_image_layout_validation.json",
     }
     artifacts: Dict[str, Any] = {}

@@ -21,8 +21,26 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
             "success": True,
         },
     )
-    _write_json(case_dir / "outline_hard_rule_compare.json", {"overall_passed": False, "field_results": {"outcome": {"passed": False}}})
-    _write_json(case_dir / "story_hard_rule_compare.json", {"overall_passed": True, "field_results": {}})
+    _write_json(
+        case_dir / "outline_hard_rule_compare.json",
+        {
+            "overall_passed": False,
+            "field_results": {
+                "outcome": {"passed": False},
+                "timeline": {"passed": True},
+            },
+        },
+    )
+    _write_json(
+        case_dir / "story_hard_rule_compare.json",
+        {
+            "overall_passed": True,
+            "field_results": {
+                "outcome": {"passed": True},
+                "timeline": {"passed": True},
+            },
+        },
+    )
     _write_json(case_dir / "image_design_validation.json", {"is_passed": True, "summary": "ok", "issues": []})
     _write_json(case_dir / "image_consistant_validation.json", {"is_passed": False, "summary": "bad", "issues": [{"issue_id": "1"}]})
     _write_json(
@@ -43,7 +61,14 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
             "status": "success",
             "is_passed": False,
             "summary": "layout bad",
-            "issues": [{"issue_id": "1"}],
+            "issues": [
+                {
+                    "issue_id": "redundant_sections_check",
+                    "issue_description": "发现多余的专家点评板块",
+                    "reason": "专家点评",
+                    "evidence_used": ["专家点评"],
+                }
+            ],
         },
     )
 
@@ -55,14 +80,26 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
         "story_passed": True,
         "image_design_passed": True,
         "image_consistant_passed": False,
-        "image_compare_passed": False,
+        "image_fact_passed": False,
         "final_image_layout_passed": False,
     }
     assert result["all_passed"] is False
     assert result["image_design"]["passed"] is True
     assert result["image_consistant"]["issue_count"] == 1
-    assert result["image_compare"]["failed_illustration_ids"] == [1]
+    assert result["image_fact"]["failed_illustration_ids"] == [1]
     assert result["final_image_layout"]["issue_count"] == 1
+    assert result["scorecard"]["gate_passed"] is False
+    assert result["scorecard"]["high_score_eligible"] is False
+    assert result["scorecard"]["max_score"] == 100
+    assert result["scorecard"]["breakdown"] == {
+        "outline_fact_score": 10.0,
+        "story_fact_score": 20.0,
+        "image_design_score": 10.0,
+        "image_consistency_score": 0.0,
+        "image_fact_score": 5.0,
+        "final_image_layout_score": 25.0,
+    }
+    assert result["scorecard"]["total_score"] == 70.0
     assert "outline_passed" not in result
     assert "story_passed" not in result
 

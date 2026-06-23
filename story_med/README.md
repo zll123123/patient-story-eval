@@ -64,6 +64,45 @@ PYTHONPATH=. python3 -m pytest story_med/evals/test_patient_story_agent.py -q
 PYTHONPATH=. deepeval test run story_med/evals/test_patient_story_agent.py
 ```
 
+如果你要用统一的 Deepeval 双模式评估入口：
+
+说明：
+- 同一个测试入口文件，但每个 case 会作为一个独立 pytest item 上报到 Deepeval / Confident AI
+- `STORY_MED_CASE_IDS` 支持用 `,`、`;`、`|` 分隔多个 case id
+
+```bash
+STORY_MED_RUN_DEEPEVAL_PIPELINE=true \
+STORY_MED_DEEPEVAL_MODE=full_pipeline \
+STORY_MED_LLM_ENV_FILE=/path/to/dev.env \
+PYTHONPATH=. deepeval test run story_med/evals/test_patient_story_deepeval_pipeline.py
+```
+
+2. 只基于已有 `results/assets` 重跑审核和打分
+
+```bash
+STORY_MED_RUN_DEEPEVAL_PIPELINE=true \
+STORY_MED_DEEPEVAL_MODE=audit_only \
+STORY_MED_LLM_ENV_FILE=/path/to/dev.env \
+PYTHONPATH=. deepeval test run story_med/evals/test_patient_story_deepeval_pipeline.py
+```
+
+常用可选参数：
+
+- `STORY_MED_CASE_IDS=SM_001,SM_002`
+  只跑指定 case
+- `STORY_MED_CASE_IDS=SM_001;SM_002|SM_003`
+  同样有效，可混用多种分隔符
+- `STORY_MED_PIPELINE_INCLUDE_VISUAL_STEPS=true|false`
+  仅在 `full_pipeline` 模式下生效，控制是否重跑图片生成接口
+- `STORY_MED_RUN_AUDIT_ATTRIBUTION=true`
+  在审核和打分后追加归因步骤
+
+统一汇总会输出到：
+
+```text
+story_med/tmp/deepeval_patient_story_summary.json
+```
+
 批量跑种子 case 到硬规则抽取/对比阶段：
 
 ```bash
