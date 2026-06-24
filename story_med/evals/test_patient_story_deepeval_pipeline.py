@@ -8,12 +8,15 @@ import re
 from typing import Any, Dict, List
 
 import pytest
+from deepeval import assert_test
+from deepeval.test_case.llm_test_case import LLMTestCase
 
 from story_med.adapters.patient_story_agent import PatientStoryAgentAdapter
 from story_med.config.app_config import load_app_config
 from story_med.config.llm_app_config import load_llm_config
 from story_med.config.settings import DEFAULT_CASE_FILE, DEFAULT_CONFIG_FILE, RESULTS_DIR, TMP_DIR
 from story_med.config.vision_app_config import load_vision_config
+from story_med.evals.patient_story_deepeval_metrics import build_patient_story_metrics
 from story_med.models.case_model import StoryCaseConfig
 from story_med.services.audit_attribution_pipeline import run_case_audit_attribution
 from story_med.services.case_loader import load_story_cases
@@ -23,29 +26,6 @@ from story_med.services.hard_rule_llm_pipeline import (
 )
 from story_med.services.image_compare_pipeline import run_case_latest_image_compare
 from story_med.services.summary_pipeline import refresh_case_summary
-
-
-def _selected_case_ids() -> List[str]:
-    """按环境变量选择需要执行的 case_id 列表。"""
-    cases = load_story_cases(DEFAULT_CASE_FILE)
-    selected_cases = _selected_cases(cases)
-    return [case.case_id for case in selected_cases]
-
-
-def _selected_cases(cases: List[StoryCaseConfig]) -> List[StoryCaseConfig]:
-    """按环境变量选择需要执行的 case。"""
-    target_case_ids = _target_case_ids()
-    if not target_case_ids:
-        return cases
-    return [case for case in cases if case.case_id in target_case_ids]
-
-
-def _target_case_ids() -> List[str]:
-    """读取 case 过滤条件。"""
-    raw_value = os.getenv("STORY_MED_CASE_IDS", "").strip()
-    if not raw_value:
-        return []
-    return [item.strip() for item in re.split(r"[,;|]+", raw_value) if item.strip()]
 
 
 def _eval_mode() -> str:
@@ -64,7 +44,31 @@ def _include_visual_steps() -> bool:
 
 def _run_attribution() -> bool:
     """读取是否执行归因步骤。"""
-    return os.getenv("STORY_MED_RUN_AUDIT_ATTRIBUTION", "").strip().lower() == "true"
+    raw_value = os.getenv("STORY_MED_RUN_AUDIT_ATTRIBUTION", "true").strip().lower()
+    return raw_value == "true"
+
+
+def _target_case_ids() -> List[str]:
+    """读取 case 过滤条件。"""
+    raw_value = os.getenv("STORY_MED_CASE_IDS", "").strip()
+    if not raw_value:
+        return []
+    return [item.strip() for item in re.split(r"[,;|]+", raw_value) if item.strip()]
+
+
+def _selected_cases(cases: List[StoryCaseConfig]) -> List[StoryCaseConfig]:
+    """按环境变量选择需要执行的 case。"""
+    target_case_ids = _target_case_ids()
+    if not target_case_ids:
+        return cases
+    return [case for case in cases if case.case_id in target_case_ids]
+
+
+def _selected_case_ids() -> List[str]:
+    """按环境变量选择需要执行的 case_id 列表。"""
+    cases = load_story_cases(DEFAULT_CASE_FILE)
+    selected_cases = _selected_cases(cases)
+    return [case.case_id for case in selected_cases]
 
 
 def _existing_session_id(case: StoryCaseConfig) -> str:
@@ -95,6 +99,17 @@ def _write_case_output(case_id: str, data: Dict[str, Any]) -> None:
                 output["results"] = {}
     output["results"][case_id] = data
     output_path.write_text(json.dumps(output, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _build_deepeval_test_case(case_id: str, summary: Dict[str, Any]) -> LLMTestCase:
+    """构造 Deepeval 可识别的单 case 测试对象。"""
+    actual_output = json.dumps(summary, ensure_ascii=False, sort_keys=True)
+    return LLMTestCase(
+        input=case_id,
+        actual_output=actual_output,
+        expected_output=actual_output,
+        name=case_id,
+    )
 
 
 @pytest.mark.parametrize("case_id", _selected_case_ids(), ids=str)
@@ -130,6 +145,11 @@ def test_patient_story_deepeval_pipeline(case_id: str) -> None:
             data={"mode": mode, "status": "failed", "error": str(exc)},
         )
         raise
+    assert_test(
+        test_case=_build_deepeval_test_case(case_id=case_id, summary=summary),
+        metrics=build_patient_story_metrics(),
+        run_async=False,
+    )
     _write_case_output(
         case_id=case_id,
         data={"mode": mode, "status": "success", "summary": summary},

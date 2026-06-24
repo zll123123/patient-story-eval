@@ -94,8 +94,8 @@ PYTHONPATH=. deepeval test run story_med/evals/test_patient_story_deepeval_pipel
   同样有效，可混用多种分隔符
 - `STORY_MED_PIPELINE_INCLUDE_VISUAL_STEPS=true|false`
   仅在 `full_pipeline` 模式下生效，控制是否重跑图片生成接口
-- `STORY_MED_RUN_AUDIT_ATTRIBUTION=true`
-  在审核和打分后追加归因步骤
+- `STORY_MED_RUN_AUDIT_ATTRIBUTION=true|false`
+  默认开启，审核和打分后追加归因步骤；显式设为 `false` 可关闭
 
 统一汇总会输出到：
 

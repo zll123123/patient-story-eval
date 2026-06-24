@@ -49,3 +49,12 @@ def test_target_case_ids_supports_multiple_delimiters(monkeypatch: pytest.Monkey
     monkeypatch.setenv("STORY_MED_CASE_IDS", "SM_001;SM_002|SM_003,SM_004")
 
     assert pipeline._target_case_ids() == ["SM_001", "SM_002", "SM_003", "SM_004"]
+
+
+def test_run_attribution_defaults_to_true(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证归因默认开启。"""
+    from story_med.evals import test_patient_story_deepeval_pipeline as pipeline
+
+    monkeypatch.delenv("STORY_MED_RUN_AUDIT_ATTRIBUTION", raising=False)
+
+    assert pipeline._run_attribution() is True
