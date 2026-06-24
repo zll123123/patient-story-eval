@@ -1,0 +1,205 @@
+"""患者故事 DeepEval 执行编排服务。"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+from typing import Any, Dict, List
+
+from deepeval import assert_test
+from deepeval.test_case.llm_test_case import LLMTestCase
+
+from story_med.adapters.patient_story_agent import PatientStoryAgentAdapter
+from story_med.config.app_config import load_app_config
+from story_med.config.llm_app_config import load_llm_config
+from story_med.config.settings import DEFAULT_CASE_FILE, DEFAULT_CONFIG_FILE, RESULTS_DIR, TMP_DIR
+from story_med.config.vision_app_config import load_vision_config
+from story_med.evals.patient_story_deepeval_metrics import build_patient_story_metrics
+from story_med.models.case_model import StoryCaseConfig
+from story_med.services.audit_attribution_pipeline import run_case_audit_attribution
+from story_med.services.case_loader import load_story_cases
+from story_med.services.hard_rule_llm_pipeline import (
+    run_case_compare_pipeline,
+    run_existing_assets_compare_pipeline,
+)
+from story_med.services.image_compare_pipeline import run_case_latest_image_compare
+from story_med.services.summary_pipeline import refresh_case_summary
+
+
+def run_selected_cases() -> List[Dict[str, Any]]:
+    """按环境变量逐个执行 case，并在每个 case 落盘后立即审核。"""
+    mode = _eval_mode()
+    include_visual_steps = _include_visual_steps()
+    run_attribution = _run_attribution()
+    cases = _selected_cases(load_story_cases(DEFAULT_CASE_FILE))
+    llm_config = load_llm_config()
+    vision_config = load_vision_config()
+    app_config = load_app_config(DEFAULT_CONFIG_FILE)
+    adapter = PatientStoryAgentAdapter(app_config)
+    results: List[Dict[str, Any]] = []
+
+    for case in cases:
+        result = run_single_case(
+            adapter=adapter,
+            llm_config=llm_config,
+            vision_config=vision_config,
+            case=case,
+            mode=mode,
+            include_visual_steps=include_visual_steps,
+            run_attribution=run_attribution,
+        )
+        results.append(result)
+    return results
+
+
+def run_single_case(
+    adapter: PatientStoryAgentAdapter,
+    llm_config: Any,
+    vision_config: Any,
+    case: StoryCaseConfig,
+    mode: str,
+    include_visual_steps: bool,
+    run_attribution: bool,
+) -> Dict[str, Any]:
+    """执行单个 case 的生成、审核、归因和 DeepEval 评估。"""
+    try:
+        summary = _run_generation_case(
+            adapter=adapter,
+            llm_config=llm_config,
+            case=case,
+            mode=mode,
+            include_visual_steps=include_visual_steps,
+        )
+        _run_audit_case(
+            llm_config=llm_config,
+            vision_config=vision_config,
+            case=case,
+            run_attribution=run_attribution,
+        )
+        assert_test(
+            test_case=_build_deepeval_test_case(case.case_id, summary),
+            metrics=build_patient_story_metrics(),
+            run_async=False,
+        )
+        status = "success"
+        error = ""
+    except Exception as exc:
+        status = "failed"
+        error = str(exc)
+        summary = _safe_refresh_summary(case.case_id)
+    _write_case_output(case.case_id, {"mode": mode, "status": status, "error": error, "summary": summary})
+    return {"case_id": case.case_id, "status": status, "summary": summary, "error": error}
+
+
+def _run_generation_case(
+    adapter: PatientStoryAgentAdapter,
+    llm_config: Any,
+    case: StoryCaseConfig,
+    mode: str,
+    include_visual_steps: bool,
+) -> Dict[str, Any]:
+    """执行单个 case 的生成流程。"""
+    if mode == "full_pipeline":
+        run_case_compare_pipeline(adapter, llm_config, case, include_visual_steps=include_visual_steps)
+    else:
+        run_existing_assets_compare_pipeline(llm_config, case, _existing_session_id(case))
+    return refresh_case_summary(case.case_id)
+
+
+def _run_audit_case(
+    llm_config: Any,
+    vision_config: Any,
+    case: StoryCaseConfig,
+    run_attribution: bool,
+) -> None:
+    """执行单个 case 的图片审核和归因。"""
+    run_case_latest_image_compare(vision_config, case)
+    refresh_case_summary(case.case_id)
+    if run_attribution:
+        run_case_audit_attribution(llm_config, case.case_id)
+
+
+def _build_deepeval_test_case(case_id: str, summary: Dict[str, Any]) -> LLMTestCase:
+    """构造 Deepeval 可识别的测试对象。"""
+    actual_output = json.dumps(summary, ensure_ascii=False, sort_keys=True)
+    return LLMTestCase(
+        input=case_id,
+        actual_output=actual_output,
+        expected_output=actual_output,
+        name=case_id,
+    )
+
+
+def _safe_refresh_summary(case_id: str) -> Dict[str, Any]:
+    """尽量读取 case 汇总，避免失败时中断后续上报。"""
+    try:
+        return refresh_case_summary(case_id)
+    except Exception:
+        return {"case_id": case_id}
+
+
+def _eval_mode() -> str:
+    """读取 DeepEval 执行模式。"""
+    mode = os.getenv("STORY_MED_DEEPEVAL_MODE", "audit_only").strip().lower()
+    if mode not in {"full_pipeline", "audit_only"}:
+        raise ValueError(f"不支持的 STORY_MED_DEEPEVAL_MODE: {mode}")
+    return mode
+
+
+def _include_visual_steps() -> bool:
+    """读取是否重跑视觉步骤。"""
+    raw_value = os.getenv("STORY_MED_PIPELINE_INCLUDE_VISUAL_STEPS", "true").strip().lower()
+    return raw_value == "true"
+
+
+def _run_attribution() -> bool:
+    """读取是否执行归因步骤。"""
+    raw_value = os.getenv("STORY_MED_RUN_AUDIT_ATTRIBUTION", "true").strip().lower()
+    return raw_value == "true"
+
+
+def _target_case_ids() -> List[str]:
+    """读取目标 case 编号。"""
+    raw_value = os.getenv("STORY_MED_CASE_IDS", "").strip()
+    if not raw_value:
+        return []
+    return [item.strip() for item in re.split(r"[,;|]+", raw_value) if item.strip()]
+
+
+def _selected_cases(cases: List[StoryCaseConfig]) -> List[StoryCaseConfig]:
+    """按环境变量筛选 case。"""
+    target_case_ids = _target_case_ids()
+    if not target_case_ids:
+        return cases
+    return [case for case in cases if case.case_id in target_case_ids]
+
+
+def _existing_session_id(case: StoryCaseConfig) -> str:
+    """读取指定 case 最近一次接口产物 session_id。"""
+    session_id = os.getenv("STORY_MED_EXISTING_SESSION_ID", "").strip()
+    if session_id:
+        return session_id
+    case_asset_dir = RESULTS_DIR / "assets" / case.case_id
+    sessions = sorted(
+        [path for path in case_asset_dir.iterdir() if path.is_dir()],
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not sessions:
+        raise RuntimeError(f"未找到已有接口产物目录: {case_asset_dir}")
+    return sessions[0].name
+
+
+def _write_case_output(case_id: str, data: Dict[str, Any]) -> None:
+    """写入 DeepEval 统一汇总文件。"""
+    output_path = TMP_DIR / "deepeval_patient_story_summary.json"
+    output: Dict[str, Any] = {"results": {}}
+    if output_path.exists():
+        loaded = json.loads(output_path.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            output.update(loaded)
+            if not isinstance(output.get("results"), dict):
+                output["results"] = {}
+    output["results"][case_id] = data
+    output_path.write_text(json.dumps(output, ensure_ascii=False, indent=2), encoding="utf-8")

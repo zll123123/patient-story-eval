@@ -32,7 +32,7 @@ def test_run_case_audit_attribution_skips_when_all_audits_pass(tmp_path: Path) -
 
     assert result["status"] == "skipped"
     assert result["failed_audits"] == []
-    written = json.loads((case_dir / "audit_attribution.json").read_text(encoding="utf-8"))
+    written = json.loads((case_dir / "audit_analysis.json").read_text(encoding="utf-8"))
     assert written["status"] == "skipped"
 
 
@@ -57,7 +57,7 @@ def test_run_case_audit_attribution_calls_model_when_any_audit_fails(
     )
     _write_json(case_dir / "outline_hard_rule_compare.json", {"overall_passed": False, "field_results": {"outcome": {"passed": False}}})
     _write_json(case_dir / "image_consistant_validation.json", {"is_passed": False, "issues": [{"issue_id": "1"}]})
-    prompt_file = tmp_path / "prompts" / "audit_attribution.md"
+    prompt_file = tmp_path / "prompts" / "audit_analysis.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text("请归因", encoding="utf-8")
 
@@ -93,7 +93,7 @@ def test_run_case_audit_attribution_calls_model_when_any_audit_fails(
     assert result["attribution"] == {"root_cause": "test"}
     assert "outline_passed" in captured["prompt"]
     assert "image_consistant_passed" in captured["prompt"]
-    written = json.loads((case_dir / "audit_attribution.json").read_text(encoding="utf-8"))
+    written = json.loads((case_dir / "audit_analysis.json").read_text(encoding="utf-8"))
     assert written["status"] == "success"
 
 
@@ -114,3 +114,4 @@ def _dummy_llm_config():
         api_key="test-key",
         timeout_seconds=30,
     )
+

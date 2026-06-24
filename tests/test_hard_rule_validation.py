@@ -39,4 +39,3 @@ def _find_single_file(directory: Path) -> Path:
     files = [item for item in directory.iterdir() if item.is_file()]
     assert len(files) == 1, f"目录文件数量不符合预期: {directory}"
     return files[0]
-

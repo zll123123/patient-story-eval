@@ -44,7 +44,7 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
     _write_json(case_dir / "image_design_validation.json", {"is_passed": True, "summary": "ok", "issues": []})
     _write_json(case_dir / "image_consistant_validation.json", {"is_passed": False, "summary": "bad", "issues": [{"issue_id": "1"}]})
     _write_json(
-        case_dir / "image_compare_result.json",
+        case_dir / "image_fact_validation.json",
         {
             "status": "success",
             "overall_passed": False,
@@ -108,3 +108,4 @@ def _write_json(path: Path, data: dict) -> None:
     """写入 JSON 文件。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+

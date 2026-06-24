@@ -4,3 +4,8 @@ verify_ssl: true
 accept: application/json
 user_agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36
 result_file: results/patient_story_run.json
+deepeval:
+  mode: full_pipeline
+  include_visual_steps: true
+  run_attribution: true
+  test_file: tests/test_patient_story_deepeval_pipeline.py

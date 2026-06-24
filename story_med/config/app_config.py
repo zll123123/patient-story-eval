@@ -6,14 +6,16 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from story_med.config.constants import (
-    DEFAULT_ACCEPT,
-    DEFAULT_TIMEOUT_SECONDS,
-    DEFAULT_USER_AGENT,
-    DEFAULT_VERIFY_SSL,
-)
 from story_med.config.settings import CONFIG_DIR, DEFAULT_CONFIG_FILE
 from story_med.utils.yaml_loader import load_yaml_file
+
+DEFAULT_TIMEOUT_SECONDS = 60
+DEFAULT_VERIFY_SSL = True
+DEFAULT_ACCEPT = "application/json"
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+)
 
 
 @dataclass

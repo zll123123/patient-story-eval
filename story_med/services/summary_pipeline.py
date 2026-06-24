@@ -106,7 +106,7 @@ def _merge_image_summary(case_dir: Path, summary: Dict[str, Any], audit_overview
             "summary": image_consistant.get("summary", ""),
         }
 
-    image_compare_path = case_dir / "image_compare_result.json"
+    image_compare_path = case_dir / "image_fact_validation.json"
     if image_compare_path.exists():
         image_compare = _read_json(image_compare_path)
         illustrations = image_compare.get("illustrations") or []

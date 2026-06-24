@@ -28,7 +28,7 @@ def run_latest_image_compare(config: StoryMedVisionConfig, case: StoryCaseConfig
         report = _build_success_report(config, case, session_id)
     except Exception as exc:
         report = _build_blocked_report(case, session_id, str(exc))
-    _write_json(report, output_dir / "image_compare_result.json")
+    _write_json(report, output_dir / "image_fact_validation.json")
     return report
 
 
@@ -41,7 +41,7 @@ def run_case_latest_image_compare(config: StoryMedVisionConfig, case: StoryCaseC
         report = _build_success_report(config, case, session_id)
     except Exception as exc:
         report = _build_blocked_report(case, session_id, str(exc))
-    _write_json(report, output_dir / "image_compare_result.json")
+    _write_json(report, output_dir / "image_fact_validation.json")
     return report
 
 
@@ -155,7 +155,7 @@ def _build_image_prompt(
 
 def _prompt_with_payload(payload: Dict[str, Any]) -> str:
     """拼接图片评估 prompt 和输入 JSON。"""
-    template = (PROMPTS_DIR / "image_case_consistency_validate.md").read_text(encoding="utf-8")
+    template = (PROMPTS_DIR / "image_fact_consistency_validate.md").read_text(encoding="utf-8")
     return f"{template}\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
 
 

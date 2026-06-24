@@ -49,19 +49,19 @@ pip install -r requirements.txt
 只验证适配器封装，不请求远程接口：
 
 ```bash
-PYTHONPATH=. python3 -m pytest story_med/evals/test_patient_story_agent_unit.py -q
+PYTHONPATH=. python3 -m pytest tests/test_patient_story_agent_unit.py -q
 ```
 
 在仓库根目录执行单条真实链路：
 
 ```bash
-PYTHONPATH=. python3 -m pytest story_med/evals/test_patient_story_agent.py -q
+PYTHONPATH=. python3 -m pytest tests/test_patient_story_agent.py -q
 ```
 
 如果你要用 DeepEval CLI：
 
 ```bash
-PYTHONPATH=. deepeval test run story_med/evals/test_patient_story_agent.py
+PYTHONPATH=. deepeval test run tests/test_patient_story_agent.py
 ```
 
 如果你要用统一的 Deepeval 双模式评估入口：
@@ -74,7 +74,7 @@ PYTHONPATH=. deepeval test run story_med/evals/test_patient_story_agent.py
 STORY_MED_RUN_DEEPEVAL_PIPELINE=true \
 STORY_MED_DEEPEVAL_MODE=full_pipeline \
 STORY_MED_LLM_ENV_FILE=/path/to/dev.env \
-PYTHONPATH=. deepeval test run story_med/evals/test_patient_story_deepeval_pipeline.py
+PYTHONPATH=. deepeval test run tests/test_patient_story_deepeval_pipeline.py
 ```
 
 2. 只基于已有 `results/assets` 重跑审核和打分
@@ -83,7 +83,7 @@ PYTHONPATH=. deepeval test run story_med/evals/test_patient_story_deepeval_pipel
 STORY_MED_RUN_DEEPEVAL_PIPELINE=true \
 STORY_MED_DEEPEVAL_MODE=audit_only \
 STORY_MED_LLM_ENV_FILE=/path/to/dev.env \
-PYTHONPATH=. deepeval test run story_med/evals/test_patient_story_deepeval_pipeline.py
+PYTHONPATH=. deepeval test run tests/test_patient_story_deepeval_pipeline.py
 ```
 
 常用可选参数：
@@ -100,7 +100,7 @@ PYTHONPATH=. deepeval test run story_med/evals/test_patient_story_deepeval_pipel
 统一汇总会输出到：
 
 ```text
-story_med/tmp/deepeval_patient_story_summary.json
+story_med/results/temp/deepeval_patient_story_summary.json
 ```
 
 批量跑种子 case 到硬规则抽取/对比阶段：
@@ -108,7 +108,7 @@ story_med/tmp/deepeval_patient_story_summary.json
 ```bash
 STORY_MED_RUN_HARD_RULE_PIPELINE=true \
 STORY_MED_LLM_ENV_FILE=/path/to/dev.env \
-PYTHONPATH=. python3 -m pytest story_med/evals/test_patient_story_hard_rule_pipeline.py -q
+PYTHONPATH=. python3 -m pytest tests/test_patient_story_hard_rule_pipeline.py -q
 ```
 
 默认会调用真实患者故事 agent，执行到 `outline` 和 `story` 后再调用 LLM prompt 做字段抽取和对比。若外部 agent 暂不可用，只想验证 case、prompt 和对比链路，可以显式使用 `case_facts` 源模式：
@@ -117,7 +117,7 @@ PYTHONPATH=. python3 -m pytest story_med/evals/test_patient_story_hard_rule_pipe
 STORY_MED_RUN_HARD_RULE_PIPELINE=true \
 STORY_MED_PIPELINE_SOURCE_MODE=case_facts \
 STORY_MED_LLM_ENV_FILE=/path/to/dev.env \
-PYTHONPATH=. python3 -m pytest story_med/evals/test_patient_story_hard_rule_pipeline.py -q
+PYTHONPATH=. python3 -m pytest tests/test_patient_story_hard_rule_pipeline.py -q
 ```
 
 只跑指定 case：
@@ -126,7 +126,7 @@ PYTHONPATH=. python3 -m pytest story_med/evals/test_patient_story_hard_rule_pipe
 STORY_MED_RUN_HARD_RULE_PIPELINE=true \
 STORY_MED_CASE_IDS=SM_002,SM_003 \
 STORY_MED_LLM_ENV_FILE=/path/to/dev.env \
-PYTHONPATH=. python3 -m pytest story_med/evals/test_patient_story_hard_rule_pipeline.py -q
+PYTHONPATH=. python3 -m pytest tests/test_patient_story_hard_rule_pipeline.py -q
 ```
 
 评估最近一次真实链路生成的图片：
@@ -134,7 +134,7 @@ PYTHONPATH=. python3 -m pytest story_med/evals/test_patient_story_hard_rule_pipe
 ```bash
 STORY_MED_RUN_IMAGE_COMPARE=true \
 STORY_MED_VISION_API_KEY=<dashscope_api_key> \
-PYTHONPATH=. python3 -m pytest story_med/evals/test_patient_story_image_compare.py -q
+PYTHONPATH=. python3 -m pytest tests/test_patient_story_image_compare.py -q
 ```
 
 默认视觉模型配置已切到阿里云百炼 OpenAI 兼容接口：
@@ -148,7 +148,7 @@ PYTHONPATH=. python3 -m pytest story_med/evals/test_patient_story_image_compare.
 ```bash
 STORY_MED_RUN_IMAGE_COMPARE=true \
 DASHSCOPE_API_KEY=<dashscope_api_key> \
-PYTHONPATH=. python3 -m pytest story_med/evals/test_patient_story_image_compare.py -q
+PYTHONPATH=. python3 -m pytest tests/test_patient_story_image_compare.py -q
 ```
 
 如果使用本地 NHTAI 多模态网关：
@@ -158,7 +158,7 @@ STORY_MED_RUN_IMAGE_COMPARE=true \
 STORY_MED_VISION_PROVIDER=nhtai \
 STORY_MED_VISION_ENV_FILE=/path/to/.env \
 STORY_MED_VISION_MODEL=qwen2.5-vl-72b-instruct \
-PYTHONPATH=. python3 -m pytest story_med/evals/test_patient_story_image_compare.py -q
+PYTHONPATH=. python3 -m pytest tests/test_patient_story_image_compare.py -q
 ```
 
 ## 输出
@@ -188,11 +188,11 @@ story_med/results/assets/{case_id}/{session_id}/{step_name}/
 硬规则抽取和对比中间结果会保存到：
 
 ```text
-story_med/tmp/{case_id}/
+story_med/results/temp/{case_id}/
 ```
 
-图片评估结果会保存到：
+图片事实审核结果会保存到：
 
 ```text
-story_med/tmp/{case_id}/image_compare_result.json
+story_med/results/temp/{case_id}/image_fact_validation.json
 ```

@@ -256,3 +256,4 @@ def test_validate_final_image_layout_uses_original_image(monkeypatch: pytest.Mon
 
     assert captured["use_thumbnail"] is False
     assert result["status"] == "success"
+

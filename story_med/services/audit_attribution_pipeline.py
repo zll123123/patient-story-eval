@@ -21,12 +21,12 @@ def run_case_audit_attribution(llm_config: StoryMedLlmConfig, case_id: str) -> D
     failed_audits = _failed_audit_keys(summary.get("audit_overview"))
     if not failed_audits:
         result = _skip_result(case_id)
-        _write_json(result, case_dir / "audit_attribution.json")
+        _write_json(result, case_dir / "audit_analysis.json")
         return result
 
     if not ATTRIBUTION_PROMPT_FILE.exists():
         result = _pending_result(case_id, failed_audits)
-        _write_json(result, case_dir / "audit_attribution.json")
+        _write_json(result, case_dir / "audit_analysis.json")
         return result
 
     payload = _build_payload(case_dir, summary, failed_audits)
@@ -37,7 +37,7 @@ def run_case_audit_attribution(llm_config: StoryMedLlmConfig, case_id: str) -> D
         "failed_audits": failed_audits,
         "attribution": result,
     }
-    _write_json(output, case_dir / "audit_attribution.json")
+    _write_json(output, case_dir / "audit_analysis.json")
     return output
 
 
@@ -64,7 +64,7 @@ def _build_payload(case_dir: Path, summary: Dict[str, Any], failed_audits: List[
         "story_passed": "story_hard_rule_compare.json",
         "image_design_passed": "image_design_validation.json",
         "image_consistant_passed": "image_consistant_validation.json",
-        "image_fact_passed": "image_compare_result.json",
+        "image_fact_passed": "image_fact_validation.json",
         "final_image_layout_passed": "final_image_layout_validation.json",
     }
     artifacts: Dict[str, Any] = {}

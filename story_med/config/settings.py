@@ -11,7 +11,7 @@ DOCS_DIR = BASE_DIR / "docs"
 PROMPTS_DIR = BASE_DIR / "prompts"
 RESULTS_DIR = BASE_DIR / "results"
 ASSETS_DIR = RESULTS_DIR / "assets"
-TMP_DIR = BASE_DIR / "tmp"
+TMP_DIR = RESULTS_DIR / "temp"
 
 DEFAULT_CONFIG_FILE = CONFIG_DIR / "config.yaml"
 DEFAULT_LLM_CONFIG_FILE = CONFIG_DIR / "llm_config.yaml"

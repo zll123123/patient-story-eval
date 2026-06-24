@@ -67,7 +67,7 @@
 运行方式：
 
 ```bash
-PYTHONPATH=. python3 -m pytest story_med/evals/test_hard_rule_validation.py -q
+PYTHONPATH=. python3 -m pytest tests/test_hard_rule_validation.py -q
 ```
 
 校验报告输出到：
