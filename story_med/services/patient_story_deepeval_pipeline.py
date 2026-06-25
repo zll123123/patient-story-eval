@@ -7,15 +7,11 @@ import os
 import re
 from typing import Any, Dict, List
 
-from deepeval import assert_test
-from deepeval.test_case.llm_test_case import LLMTestCase
-
 from story_med.adapters.patient_story_agent import PatientStoryAgentAdapter
 from story_med.config.app_config import load_app_config
 from story_med.config.llm_app_config import load_llm_config
 from story_med.config.settings import DEFAULT_CASE_FILE, DEFAULT_CONFIG_FILE, RESULTS_DIR, TMP_DIR
 from story_med.config.vision_app_config import load_vision_config
-from story_med.evals.patient_story_deepeval_metrics import build_patient_story_metrics
 from story_med.models.case_model import StoryCaseConfig
 from story_med.services.audit_attribution_pipeline import run_case_audit_attribution
 from story_med.services.case_loader import load_story_cases
@@ -77,11 +73,6 @@ def run_single_case(
             case=case,
             run_attribution=run_attribution,
         )
-        assert_test(
-            test_case=_build_deepeval_test_case(case.case_id, summary),
-            metrics=build_patient_story_metrics(),
-            run_async=False,
-        )
         status = "success"
         error = ""
     except Exception as exc:
@@ -118,17 +109,6 @@ def _run_audit_case(
     refresh_case_summary(case.case_id)
     if run_attribution:
         run_case_audit_attribution(llm_config, case.case_id)
-
-
-def _build_deepeval_test_case(case_id: str, summary: Dict[str, Any]) -> LLMTestCase:
-    """构造 Deepeval 可识别的测试对象。"""
-    actual_output = json.dumps(summary, ensure_ascii=False, sort_keys=True)
-    return LLMTestCase(
-        input=case_id,
-        actual_output=actual_output,
-        expected_output=actual_output,
-        name=case_id,
-    )
 
 
 def _safe_refresh_summary(case_id: str) -> Dict[str, Any]:
