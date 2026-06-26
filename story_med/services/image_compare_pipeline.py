@@ -49,7 +49,7 @@ def _build_success_report(config: StoryMedVisionConfig, case: StoryCaseConfig, s
     """构建图片评估成功报告。"""
     asset_dir = RESULTS_DIR / "assets" / case.case_id / session_id
     image_design = _read_image_design(asset_dir)
-    design_validation = _validate_image_design(case, image_design)
+    design_validation = _validate_image_design(case, asset_dir, image_design)
     _write_json(design_validation, TMP_DIR / case.case_id / "image_design_validation.json")
     consistant_validation = _validate_image_consistance(config, asset_dir, image_design)
     _write_json(consistant_validation, TMP_DIR / case.case_id / "image_consistant_validation.json")
@@ -80,7 +80,7 @@ def _compare_illustrations(
     results: List[Dict[str, Any]] = []
     for illustration in image_design.get("illustrations") or []:
         image_path = _find_generated_image(asset_dir / "generate_images", str(illustration.get("image_path") or ""))
-        prompt = _build_image_prompt(case, "illustration", illustration)
+        prompt = _build_image_prompt(case, "illustration", illustration, asset_dir)
         result = call_multimodal_json(config, prompt, [image_path])
         results.append(
             {
@@ -103,7 +103,7 @@ def _compare_final_image(
     final_image = _find_single_image(asset_dir / "generate_final_image")
     payload = {
         "image_type": "final_composite",
-        "patient_case": case.case_facts,
+        "patient_case": _read_case_parse(asset_dir),
         "image_design": image_design,
     }
     result = call_multimodal_json(config, _prompt_with_payload(payload), [final_image])
@@ -127,7 +127,7 @@ def _validate_final_image_layout(
         }
     final_image = _find_single_image(asset_dir / "generate_final_image")
     payload = {
-        "patient_case": case.case_facts,
+        "patient_case": _read_case_parse(asset_dir),
         "image_design": image_design,
     }
     prompt = _final_image_layout_prompt(prompt_file, payload)
@@ -143,11 +143,12 @@ def _build_image_prompt(
     case: StoryCaseConfig,
     image_type: str,
     illustration: Dict[str, Any],
+    asset_dir: Path,
 ) -> str:
     """构建单张图片评估提示词。"""
     payload = {
         "image_type": image_type,
-        "patient_case": case.case_facts,
+        "patient_case": _read_case_parse(asset_dir),
         "expected_image": illustration,
     }
     return _prompt_with_payload(payload)
@@ -159,11 +160,15 @@ def _prompt_with_payload(payload: Dict[str, Any]) -> str:
     return f"{template}\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
 
 
-def _validate_image_design(case: StoryCaseConfig, image_design: Dict[str, Any]) -> Dict[str, Any]:
+def _validate_image_design(
+    case: StoryCaseConfig,
+    asset_dir: Path,
+    image_design: Dict[str, Any],
+) -> Dict[str, Any]:
     """审核图片设计大纲的医学和常识合理性。"""
     llm_config = load_llm_config()
     payload = {
-        "patient_case": case.case_facts,
+        "patient_case": _read_case_parse(asset_dir),
         "image_design": image_design,
     }
     return call_llm_json(llm_config, _image_design_validation_prompt(payload))
@@ -220,6 +225,14 @@ def _final_image_layout_prompt(prompt_file: Path, payload: Dict[str, Any]) -> st
     """拼接最终长图结构审核 prompt。"""
     template = prompt_file.read_text(encoding="utf-8")
     return f"{template}\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
+
+
+def _read_case_parse(asset_dir: Path) -> str:
+    """读取图片解析后的病例文本。"""
+    case_parse_path = asset_dir / "case_parse" / "case_parse.md"
+    if case_parse_path.exists():
+        return case_parse_path.read_text(encoding="utf-8")
+    return ""
 
 
 def _read_latest_run_result() -> Dict[str, Any]:

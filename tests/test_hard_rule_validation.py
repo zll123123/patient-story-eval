@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from story_med.config.settings import BASE_DIR, DEFAULT_CASE_FILE, RESULTS_DIR
+from story_med.config.settings import BASE_DIR, RESULTS_DIR
 from story_med.services.case_loader import load_story_cases
 from story_med.services.hard_rule_validator import validate_hard_rules, write_hard_rule_report
 
@@ -23,7 +23,7 @@ def test_latest_story_outputs_pass_hard_rules() -> None:
 
     outline_path = _find_single_file(BASE_DIR / "results" / "assets" / case_id / session_id / "generate_outline")
     story_path = _find_single_file(BASE_DIR / "results" / "assets" / case_id / session_id / "generate_story")
-    case = load_story_cases(DEFAULT_CASE_FILE)[0]
+    case = load_story_cases()[0]
     report = validate_hard_rules(
         case=case,
         outline_text=outline_path.read_text(encoding="utf-8"),

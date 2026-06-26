@@ -44,3 +44,19 @@ facts text
     assert cases[0].creative_brief == "brief text"
     assert cases[0].case_facts == "facts text"
     assert cases[0].hard_rules["disease"]["expected"] == "肺癌"
+
+
+def test_load_story_cases_prefers_case_parse(tmp_path: Path) -> None:
+    """验证 clinical_case 中的 case_parse 会优先作为病例事实。"""
+    case_file = tmp_path / "clinical_case.yaml"
+    case_file.write_text(
+        """clinical_cases:\n  - case_id: SM_TEST\n    title: 临床标题\n    creative_brief: brief\n    case_parse: parsed facts\n    hard_rules:\n      disease:\n        expected: 肺癌\n""",
+        encoding="utf-8",
+    )
+    from story_med.services import clinical_case_config as clinical_case_service
+
+    clinical_case_service.DEFAULT_CLINICAL_CASE_FILE = case_file  # type: ignore[assignment]
+
+    cases = load_story_cases()
+
+    assert cases[0].case_facts == "parsed facts"

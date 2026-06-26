@@ -238,7 +238,7 @@ class PatientStoryAgentAdapter:
         """构建大纲生成请求体。"""
         return {
             "creative_brief": case.creative_brief,
-            "case_facts": case.case_facts,
+            "case_facts": case.case_parse or case.case_facts,
         }
 
     def _download_step_assets(

@@ -1,24 +1,16 @@
-"""临床病例预期配置加载服务。"""
+"""临床病例配置加载服务。"""
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from story_med.config.settings import DEFAULT_CLINICAL_CASE_FILE, DEFAULT_HARD_RULE_FIELD_FILE
-from story_med.models.case_model import StoryCaseConfig
 from story_med.utils.yaml_loader import load_yaml_file
 
 
 def load_clinical_case_config(config_file: Path = DEFAULT_CLINICAL_CASE_FILE) -> Dict[str, Any]:
-    """加载临床病例预期配置。
-
-    Args:
-        config_file: 临床病例配置文件路径。
-
-    Returns:
-        配置字典。文件不存在时返回空配置。
-    """
+    """读取临床病例配置文件。"""
     if not config_file.exists():
         return {}
     data = load_yaml_file(config_file)
@@ -26,13 +18,8 @@ def load_clinical_case_config(config_file: Path = DEFAULT_CLINICAL_CASE_FILE) ->
 
 
 def load_hard_rule_fields() -> Dict[str, Any]:
-    """读取硬规则字段定义。
-
-    Returns:
-        硬规则字段 schema。优先读取 clinical_case.yaml，缺失时兼容旧文件。
-    """
-    config_data = load_clinical_case_config()
-    hard_rule_fields = config_data.get("hard_rule_fields")
+    """读取硬规则字段 schema。"""
+    hard_rule_fields = load_clinical_case_config().get("hard_rule_fields")
     if isinstance(hard_rule_fields, dict) and hard_rule_fields:
         return hard_rule_fields
     legacy_data = load_yaml_file(DEFAULT_HARD_RULE_FIELD_FILE)
@@ -40,55 +27,46 @@ def load_hard_rule_fields() -> Dict[str, Any]:
     return legacy_fields if isinstance(legacy_fields, dict) else {}
 
 
-def apply_clinical_case_overrides(cases: list[StoryCaseConfig]) -> list[StoryCaseConfig]:
-    """将 clinical_case.yaml 中的标题和硬规则预期覆盖到 case。
-
-    Args:
-        cases: 从主测试数据加载出的 case 列表。
+def load_clinical_cases() -> List[Dict[str, Any]]:
+    """读取病例测试配置列表。
 
     Returns:
-        覆盖后的 case 列表。
+        标准化后的病例配置列表。
     """
-    clinical_cases = _clinical_cases()
-    if not clinical_cases:
-        return cases
-    return [_override_case(case, clinical_cases.get(case.case_id)) for case in cases]
-
-
-def _clinical_cases() -> Dict[str, Any]:
-    """读取按 case_id 索引的临床病例配置。"""
     config_data = load_clinical_case_config()
-    raw_cases = config_data.get("clinical_cases") or config_data.get("cases") or {}
+    raw_cases = config_data.get("clinical_cases") or []
+    if isinstance(raw_cases, dict):
+        return [dict(case_id=case_id, **value) for case_id, value in raw_cases.items() if isinstance(value, dict)]
     if isinstance(raw_cases, list):
-        return {
-            str(item.get("case_id")): item
-            for item in raw_cases
-            if isinstance(item, dict) and item.get("case_id")
-        }
-    return raw_cases if isinstance(raw_cases, dict) else {}
+        return [item for item in raw_cases if isinstance(item, dict)]
+    return []
 
 
-def _override_case(case: StoryCaseConfig, raw_override: Any) -> StoryCaseConfig:
-    """覆盖单条 case 配置。"""
-    if not isinstance(raw_override, dict):
-        return case
-    title = str(raw_override.get("title") or raw_override.get("description") or "").strip()
-    hard_rules = _normalize_hard_rules(raw_override)
-    return StoryCaseConfig(
-        case_id=case.case_id,
-        description=title or case.description,
-        creative_brief=case.creative_brief,
-        case_facts=case.case_facts,
-        hard_rules=hard_rules or case.hard_rules,
-    )
+def get_clinical_case(case_id: str) -> Dict[str, Any]:
+    """按 case_id 获取病例配置。"""
+    for case in load_clinical_cases():
+        if str(case.get("case_id") or "") == case_id:
+            return case
+    raise FileNotFoundError(f"未找到病例配置: {case_id}")
 
 
-def _normalize_hard_rules(raw_override: Dict[str, Any]) -> Dict[str, Any]:
-    """归一化 clinical_case.yaml 中的硬规则预期。"""
-    raw_rules = raw_override.get("hard_rules")
-    if isinstance(raw_rules, dict) and raw_rules:
-        return raw_rules
-    expected_fields = raw_override.get("expected_fields")
-    if not isinstance(expected_fields, dict):
-        return {}
-    return {field_name: {"expected": expected} for field_name, expected in expected_fields.items()}
+def normalize_case_parse_text(case_id: str, history: Dict[str, Any]) -> str:
+    """将病例解析 history 转成可复用的病例事实文本。"""
+    messages = history.get("messages") or []
+    lines: List[str] = [f"# {case_id} 病例解析", ""]
+    for item in messages:
+        if not isinstance(item, dict):
+            continue
+        content = str(item.get("content") or "").strip()
+        if "病例解析完成" in content:
+            lines.append(content)
+            break
+    return "\n".join(lines).strip() + "\n"
+
+
+def load_case_parse_text(case_id: str, session_id: str) -> str:
+    """读取指定病例最近产出的解析文本。"""
+    case_parse_path = DEFAULT_CLINICAL_CASE_FILE.parent.parent / "results" / "assets" / case_id / session_id / "case_parse" / "case_parse.md"
+    if case_parse_path.exists():
+        return case_parse_path.read_text(encoding="utf-8")
+    return ""

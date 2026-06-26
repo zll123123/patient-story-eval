@@ -77,11 +77,12 @@ def run_existing_assets_compare_pipeline(
 
 
 def build_expected_fields(case: StoryCaseConfig) -> Dict[str, Any]:
-    """从 case.hard_rules 提取 expected 字段。"""
+    """从 case.hard_rules.field.expected 提取预期值。"""
     expected_fields: Dict[str, Any] = {}
     for field_name, rule in case.hard_rules.items():
         if isinstance(rule, dict):
-            expected_fields[field_name] = rule.get("expected")
+            field_rule = rule.get("field") if isinstance(rule.get("field"), dict) else rule
+            expected_fields[field_name] = field_rule.get("expected")
     return expected_fields
 
 

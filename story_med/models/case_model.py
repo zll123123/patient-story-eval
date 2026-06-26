@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 
@@ -13,8 +13,9 @@ class StoryCaseConfig:
     case_id: str
     description: str
     creative_brief: str
-    case_facts: str
-    hard_rules: Dict[str, Any]
+    case_facts: str = ""
+    case_parse: str = ""
+    hard_rules: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典。"""
@@ -23,6 +24,7 @@ class StoryCaseConfig:
             "description": self.description,
             "creative_brief": self.creative_brief,
             "case_facts": self.case_facts,
+            "case_parse": self.case_parse,
             "hard_rules": self.hard_rules,
         }
 
@@ -34,6 +36,7 @@ class StoryCaseConfig:
             description=str(data.get("description") or ""),
             creative_brief=str(data.get("creative_brief") or ""),
             case_facts=str(data.get("case_facts") or ""),
+            case_parse=str(data.get("case_parse") or ""),
             hard_rules=dict(data.get("hard_rules") or {}),
         )
 

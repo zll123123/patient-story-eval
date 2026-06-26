@@ -11,7 +11,7 @@ from story_med.adapters.patient_case_image_agent import PatientCaseImageAgentAda
 from story_med.adapters.patient_story_agent import PatientStoryAgentAdapter
 from story_med.config.app_config import load_app_config
 from story_med.config.llm_app_config import load_llm_config
-from story_med.config.settings import DEFAULT_CASE_FILE, DEFAULT_CONFIG_FILE, RESULTS_DIR, TMP_DIR
+from story_med.config.settings import DEFAULT_CONFIG_FILE, RESULTS_DIR, TMP_DIR
 from story_med.config.vision_app_config import load_vision_config
 from story_med.models.case_model import StoryCaseConfig
 from story_med.services.audit_attribution_pipeline import run_case_audit_attribution
@@ -29,7 +29,7 @@ def run_selected_cases() -> List[Dict[str, Any]]:
     mode = _eval_mode()
     include_visual_steps = _include_visual_steps()
     run_attribution = _run_attribution()
-    cases = _selected_cases(load_story_cases(DEFAULT_CASE_FILE))
+    cases = _selected_cases(load_story_cases())
     llm_config = load_llm_config()
     vision_config = load_vision_config()
     app_config = load_app_config(DEFAULT_CONFIG_FILE)

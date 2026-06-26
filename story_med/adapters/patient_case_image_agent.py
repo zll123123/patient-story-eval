@@ -25,6 +25,7 @@ from story_med.config.app_config import StoryMedConfig
 from story_med.config.settings import ASSETS_DIR, TMP_DIR
 from story_med.models.case_model import StoryAgentRunResult, StoryCaseConfig, StoryStepResult
 from story_med.services.case_image_input import list_case_images
+from story_med.services.clinical_case_config import normalize_case_parse_text
 
 
 class PatientCaseImageAgentAdapter:
@@ -99,8 +100,18 @@ class PatientCaseImageAgentAdapter:
                     history_timing,
                 )
             )
+            case_parse_text = self._write_case_parse(case.case_id, session_id, history_api.body)
             downloaded_assets = self._download_history_artifacts(case.case_id, session_id, history_api.body)
-            return self._success_result(case, session_id, steps, history_api.body, downloaded_assets, started_at, started_perf)
+            return self._success_result(
+                case,
+                session_id,
+                steps,
+                history_api.body,
+                downloaded_assets,
+                case_parse_text,
+                started_at,
+                started_perf,
+            )
         except Exception as exc:
             logger.exception("图片病例患者故事 case 执行失败: {}", case.case_id)
             return self._failed_result(case, session_id, steps, str(exc), started_at, started_perf)
@@ -131,8 +142,8 @@ class PatientCaseImageAgentAdapter:
         results: List[Dict[str, Any]] = []
         for item in _iter_artifacts(history):
             step_name = _artifact_step_name(item["group"], item["artifact"])
-            output_path = ASSETS_DIR / case_id / session_id / step_name / Path(item["file_key"]).name
             download_info = create_download_url(self._session, self._config, item["file_key"])
+            output_path = ASSETS_DIR / case_id / session_id / step_name / Path(item["file_key"]).name
             downloaded = download_signed_file(str(download_info["download_url"]), output_path, self._config)
             results.append(
                 {
@@ -144,6 +155,14 @@ class PatientCaseImageAgentAdapter:
                 }
             )
         return results
+
+    def _write_case_parse(self, case_id: str, session_id: str, history: Dict[str, Any]) -> str:
+        """将病例解析结果写入 case_parse 目录。"""
+        case_parse_dir = ASSETS_DIR / case_id / session_id / "case_parse"
+        case_parse_dir.mkdir(parents=True, exist_ok=True)
+        case_parse_text = normalize_case_parse_text(case_id, history)
+        (case_parse_dir / "case_parse.md").write_text(case_parse_text, encoding="utf-8")
+        return case_parse_text
 
     @staticmethod
     def _step(
@@ -175,6 +194,7 @@ class PatientCaseImageAgentAdapter:
         steps: List[StoryStepResult],
         history: Dict[str, Any],
         downloaded_assets: List[Dict[str, Any]],
+        case_parse_text: str,
         started_at: str,
         started_perf: float,
     ) -> StoryAgentRunResult:
@@ -189,7 +209,7 @@ class PatientCaseImageAgentAdapter:
             outline_response=_artifacts_by_group(history, "outline"),
             story_response=_artifacts_by_group(history, "story"),
             images_response=_artifacts_by_group(history, "image"),
-            final_image_response=_artifacts_by_group(history, "final_image"),
+            final_image_response={"case_parse": case_parse_text},
             downloaded_assets=downloaded_assets,
             started_at=started_at,
             finished_at=PatientCaseImageAgentAdapter._now_iso(),
@@ -286,6 +306,7 @@ def _artifacts_by_group(history: Dict[str, Any], group: str) -> Dict[str, Any]:
         return {}
     value = artifacts.get(group)
     return {"artifacts": value} if value else {}
+
 
 
 def _guess_content_type(path: Path) -> str:

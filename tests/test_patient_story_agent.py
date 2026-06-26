@@ -6,7 +6,7 @@ from pathlib import Path
 
 from story_med.adapters.patient_story_agent import PatientStoryAgentAdapter
 from story_med.config.app_config import load_app_config
-from story_med.config.settings import BASE_DIR, DEFAULT_CASE_FILE, DEFAULT_CONFIG_FILE
+from story_med.config.settings import BASE_DIR, DEFAULT_CONFIG_FILE
 from story_med.services.case_loader import load_story_cases
 from story_med.services.result_writer import write_run_result
 
@@ -14,7 +14,7 @@ from story_med.services.result_writer import write_run_result
 def test_patient_story_agent_smoke() -> None:
     """执行一条患者故事真实链路并落盘结果。"""
     config = load_app_config(DEFAULT_CONFIG_FILE)
-    cases = load_story_cases(DEFAULT_CASE_FILE)
+    cases = load_story_cases()
     assert cases, "患者故事测试数据为空"
 
     adapter = PatientStoryAgentAdapter(config)

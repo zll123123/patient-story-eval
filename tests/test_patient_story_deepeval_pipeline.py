@@ -12,7 +12,7 @@ from story_med.services.patient_story_deepeval_pipeline import run_single_case, 
 from story_med.config.llm_app_config import load_llm_config
 from story_med.config.app_config import load_app_config
 from story_med.config.vision_app_config import load_vision_config
-from story_med.config.settings import DEFAULT_CASE_FILE, DEFAULT_CONFIG_FILE
+from story_med.config.settings import DEFAULT_CONFIG_FILE
 from story_med.services.case_loader import load_story_cases
 from story_med.adapters.patient_case_image_agent import PatientCaseImageAgentAdapter
 from story_med.adapters.patient_story_agent import PatientStoryAgentAdapter
@@ -23,7 +23,7 @@ from deepeval.test_case.llm_test_case import LLMTestCase
 
 def _selected_case_ids() -> List[str]:
     """按环境变量选择需要执行的 case_id 列表。"""
-    cases = load_story_cases(DEFAULT_CASE_FILE)
+    cases = load_story_cases()
     selected_cases = _selected_cases(cases)
     return [case.case_id for case in selected_cases]
 
@@ -40,7 +40,7 @@ def test_patient_story_deepeval_pipeline(case_id: str) -> None:
     if os.getenv("STORY_MED_RUN_DEEPEVAL_PIPELINE", "").lower() != "true":
         pytest.skip("需要设置 STORY_MED_RUN_DEEPEVAL_PIPELINE=true 才执行 Deepeval 评估")
 
-    cases = {case.case_id: case for case in load_story_cases(DEFAULT_CASE_FILE)}
+    cases = {case.case_id: case for case in load_story_cases()}
     case = cases.get(case_id)
     assert case is not None, f"未找到需要执行的 case: {case_id}"
 

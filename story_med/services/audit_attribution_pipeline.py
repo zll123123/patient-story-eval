@@ -8,8 +8,8 @@ from typing import Any, Dict, List
 
 from story_med.clients.llm_client import call_llm_json
 from story_med.config.llm_app_config import StoryMedLlmConfig
-from story_med.config.settings import DEFAULT_CASE_FILE, RESULTS_DIR, PROMPTS_DIR, TMP_DIR
-from story_med.services.case_loader import load_story_cases
+from story_med.config.settings import RESULTS_DIR, PROMPTS_DIR, TMP_DIR
+from story_med.services.case_loader import get_story_case
 
 ATTRIBUTION_PROMPT_FILE = PROMPTS_DIR / "audit_analysis.md"
 
@@ -87,10 +87,7 @@ def _build_prompt(payload: Dict[str, Any]) -> str:
 
 def _load_case(case_id: str):
     """加载指定 case 配置。"""
-    for case in load_story_cases(DEFAULT_CASE_FILE):
-        if case.case_id == case_id:
-            return case
-    raise FileNotFoundError(f"未找到 case: {case_id}")
+    return get_story_case(case_id)
 
 
 def _load_intermediate_outputs(case_id: str, session_id: str) -> Dict[str, Any]:
@@ -99,9 +96,12 @@ def _load_intermediate_outputs(case_id: str, session_id: str) -> Dict[str, Any]:
         return {}
     asset_dir = RESULTS_DIR / "assets" / case_id / session_id
     output: Dict[str, Any] = {}
+    case_parse_path = asset_dir / "case_parse" / "case_parse.md"
     outline_path = asset_dir / "generate_outline" / "generate_outline_1_outline.md"
     story_path = asset_dir / "generate_story" / "generate_story_1_story.md"
     image_design_path = asset_dir / "generate_images" / "generate_images_6_image_design.json"
+    if case_parse_path.exists():
+        output["case_parse"] = case_parse_path.read_text(encoding="utf-8")
     if outline_path.exists():
         output["outline"] = outline_path.read_text(encoding="utf-8")
     if story_path.exists():

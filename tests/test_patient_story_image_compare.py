@@ -22,7 +22,7 @@ def test_latest_patient_story_images_compare() -> None:
     if os.getenv("STORY_MED_RUN_IMAGE_COMPARE", "").lower() != "true":
         pytest.skip("需要设置 STORY_MED_RUN_IMAGE_COMPARE=true 才执行图片多模态评估")
 
-    cases = load_story_cases(DEFAULT_CASE_FILE)
+    cases = load_story_cases()
     case = next(item for item in cases if item.case_id == os.getenv("STORY_MED_IMAGE_CASE_ID", "SM_001"))
     report = run_latest_image_compare(load_vision_config(), case)
 
@@ -39,7 +39,7 @@ def test_seed_cases_latest_images_compare() -> None:
         for item in os.getenv("STORY_MED_CASE_IDS", "").split(",")
         if item.strip()
     }
-    cases = load_story_cases(DEFAULT_CASE_FILE)
+    cases = load_story_cases()
     selected_cases = [case for case in cases if not target_case_ids or case.case_id in target_case_ids]
     assert selected_cases, "未找到需要执行图片评估的 case"
 
