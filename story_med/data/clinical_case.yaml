@@ -1,0 +1,81 @@
+hard_rule_fields:
+  # --- 1. 患者个体画像（基础事实） ---
+  demographics:
+    name: 人口学特征
+    value_type: object
+    description: 构建患者基础人设与视觉年龄、体态的基石
+    properties:
+      gender:
+        name: 性别
+        value_type: string
+        description: 男性/女性，决定生理特征与疾病易感性
+      exact_age:
+        name: 具体年龄
+        value_type: integer
+        description: 用于精确判断生理衰老程度和视觉特征（如：60岁与80岁体态差异巨大）
+      occupation:
+        name: 职业/身份
+        value_type: string
+        description: 影响人物气质、手部特征、衣着风格及致病原因
+
+  # --- 2. 疾病核心本体（医学内核） ---
+  disease:
+    name: 核心疾病
+    value_type: string
+    description: 患者主要诊断疾病（标准医学术语）
+  disease_subtype:
+    name: 疾病亚型
+    value_type: object
+    description: 分子分型、病理分型等关键精准医疗信息
+    properties:
+      pathology:
+        name: 病理分型
+        value_type: string
+        description: 病理学诊断类型
+      molecular:
+        name: 分子分型
+        value_type: string
+        description: 分子检测结果或关键突变
+  stage:
+    name: 疾病阶段
+    value_type: string
+    description: 肿瘤分期或疾病严重程度（如：急性期、康复期、晚期）
+
+  # --- 3. 物理定位与外观表现（视觉与叙事锚点） ---
+  anatomy_location:
+    name: 病变部位与侧别
+    value_type: string
+    description: 精确到左右侧及解剖点（如：左手食指、右侧腰部），这是视觉生成的绝对红线
+  visible_signs:
+    name: 客观体征与外观表现
+    value_type: array
+    description: 肉眼可见的病理特征（如：关节梭形肿胀、皮肤红斑、极度消瘦、面部偏瘫等），用于指导视觉细节和故事体感描写
+
+  # --- 4. 临床干预与转归（治疗事实） ---
+  treatments:
+    name: 核心治疗方式
+    value_type: array
+    description: 真实接受过的治疗（如：具体术式、靶向药、化疗周期等）
+  medical_aids:
+    name: 医疗辅具与装置
+    value_type: array
+    description: 患者身上佩戴或使用的特定物品（如：造口袋、胰岛素泵、PICC导管、助行器、石膏等）
+  outcome:
+    name: 当前疾病状态
+    value_type: string
+    description: 当前结局或疗效状态（如：带瘤生存、完全缓解、需长期卧床）
+
+# 后续按 case_id 维护标题和硬规则预期。
+# 示例：
+# clinical_cases:
+#   SM_001:
+#     title: 69岁男性糖尿病慢性肾病安达唐治疗
+#     hard_rules:
+#       demographics:
+#         expected:
+#           gender: 男性
+#           exact_age: 69
+#           occupation: ""
+#       disease:
+#         expected: 糖尿病合并慢性肾病
+clinical_cases: {}

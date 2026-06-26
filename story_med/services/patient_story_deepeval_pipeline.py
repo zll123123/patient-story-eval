@@ -7,6 +7,7 @@ import os
 import re
 from typing import Any, Dict, List
 
+from story_med.adapters.patient_case_image_agent import PatientCaseImageAgentAdapter
 from story_med.adapters.patient_story_agent import PatientStoryAgentAdapter
 from story_med.config.app_config import load_app_config
 from story_med.config.llm_app_config import load_llm_config
@@ -33,11 +34,13 @@ def run_selected_cases() -> List[Dict[str, Any]]:
     vision_config = load_vision_config()
     app_config = load_app_config(DEFAULT_CONFIG_FILE)
     adapter = PatientStoryAgentAdapter(app_config)
+    image_adapter = PatientCaseImageAgentAdapter(app_config)
     results: List[Dict[str, Any]] = []
 
     for case in cases:
         result = run_single_case(
             adapter=adapter,
+            image_adapter=image_adapter,
             llm_config=llm_config,
             vision_config=vision_config,
             case=case,
@@ -51,6 +54,7 @@ def run_selected_cases() -> List[Dict[str, Any]]:
 
 def run_single_case(
     adapter: PatientStoryAgentAdapter,
+    image_adapter: PatientCaseImageAgentAdapter,
     llm_config: Any,
     vision_config: Any,
     case: StoryCaseConfig,
@@ -62,6 +66,7 @@ def run_single_case(
     try:
         summary = _run_generation_case(
             adapter=adapter,
+            image_adapter=image_adapter,
             llm_config=llm_config,
             case=case,
             mode=mode,
@@ -73,6 +78,7 @@ def run_single_case(
             case=case,
             run_attribution=run_attribution,
         )
+        summary = refresh_case_summary(case.case_id)
         status = "success"
         error = ""
     except Exception as exc:
@@ -85,6 +91,7 @@ def run_single_case(
 
 def _run_generation_case(
     adapter: PatientStoryAgentAdapter,
+    image_adapter: PatientCaseImageAgentAdapter,
     llm_config: Any,
     case: StoryCaseConfig,
     mode: str,
@@ -93,6 +100,8 @@ def _run_generation_case(
     """执行单个 case 的生成流程。"""
     if mode == "full_pipeline":
         run_case_compare_pipeline(adapter, llm_config, case, include_visual_steps=include_visual_steps)
+    elif mode == "image_case_pipeline":
+        run_case_compare_pipeline(image_adapter, llm_config, case, include_visual_steps=True)
     else:
         run_existing_assets_compare_pipeline(llm_config, case, _existing_session_id(case))
     return refresh_case_summary(case.case_id)
@@ -122,7 +131,7 @@ def _safe_refresh_summary(case_id: str) -> Dict[str, Any]:
 def _eval_mode() -> str:
     """读取 DeepEval 执行模式。"""
     mode = os.getenv("STORY_MED_DEEPEVAL_MODE", "audit_only").strip().lower()
-    if mode not in {"full_pipeline", "audit_only"}:
+    if mode not in {"full_pipeline", "audit_only", "image_case_pipeline"}:
         raise ValueError(f"不支持的 STORY_MED_DEEPEVAL_MODE: {mode}")
     return mode
 

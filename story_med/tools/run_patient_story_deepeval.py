@@ -23,11 +23,12 @@ def build_parser() -> argparse.ArgumentParser:
         命令行解析器。
     """
     parser = argparse.ArgumentParser(description="运行患者故事 DeepEval 评估。")
-    parser.add_argument("--mode", choices=["full_pipeline", "audit_only"], default="")
+    parser.add_argument("--mode", choices=["full_pipeline", "audit_only", "image_case_pipeline"], default="")
     parser.add_argument("--case-ids", default="")
     parser.add_argument("--identifier", default="")
     parser.add_argument("--no-visual-steps", action="store_true")
     parser.add_argument("--no-attribution", action="store_true")
+    parser.add_argument("--case-image-dir", default="")
     return parser
 
 
@@ -86,6 +87,8 @@ def build_env(args: argparse.Namespace, defaults: dict) -> dict[str, str]:
         env["STORY_MED_CASE_IDS"] = args.case_ids.strip()
     else:
         env.pop("STORY_MED_CASE_IDS", None)
+    if args.case_image_dir.strip():
+        env["STORY_MED_CASE_IMAGE_DIR"] = args.case_image_dir.strip()
     env.pop("STORY_MED_LLM_ENV_FILE", None)
     return env
 

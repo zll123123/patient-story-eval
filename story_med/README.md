@@ -86,12 +86,47 @@ STORY_MED_LLM_ENV_FILE=/path/to/dev.env \
 PYTHONPATH=. deepeval test run tests/test_patient_story_deepeval_pipeline.py
 ```
 
+3. 使用病例图片解析版链路生成产物后继续复用现有审核
+
+图片按 case 编号放入 `story_med/img/{case_id}/`，同一目录下支持多张图片，运行时会全部上传并传入解析版接口。
+
+```text
+story_med/img/SM_001/病例基础信息.png
+story_med/img/SM_001/检查结果.png
+```
+
+```bash
+python3 story_med/tools/run_patient_story_deepeval.py \
+  --mode image_case_pipeline \
+  --case-ids SM_001
+```
+
+如需使用其他图片根目录，可设置：
+
+```bash
+STORY_MED_CASE_IMAGE_DIR=/path/to/img \
+python3 story_med/tools/run_patient_story_deepeval.py \
+  --mode image_case_pipeline \
+  --case-ids SM_001
+```
+
+也可以直接用参数传入：
+
+```bash
+python3 story_med/tools/run_patient_story_deepeval.py \
+  --mode image_case_pipeline \
+  --case-ids SM_001 \
+  --case-image-dir /path/to/img
+```
+
 常用可选参数：
 
 - `STORY_MED_CASE_IDS=SM_001,SM_002`
   只跑指定 case
 - `STORY_MED_CASE_IDS=SM_001;SM_002|SM_003`
   同样有效，可混用多种分隔符
+- `STORY_MED_DEEPEVAL_MODE=image_case_pipeline`
+  使用 `story_med/img/{case_id}/` 下的病例图片走解析版生成链路，后续审核流程保持不变
 - `STORY_MED_PIPELINE_INCLUDE_VISUAL_STEPS=true|false`
   仅在 `full_pipeline` 模式下生效，控制是否重跑图片生成接口
 - `STORY_MED_RUN_AUDIT_ATTRIBUTION=true|false`

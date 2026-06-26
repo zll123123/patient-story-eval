@@ -9,8 +9,9 @@ from typing import Any, Dict, List
 from story_med.adapters.patient_story_agent import PatientStoryAgentAdapter
 from story_med.clients.llm_client import call_llm_json
 from story_med.config.llm_app_config import StoryMedLlmConfig
-from story_med.config.settings import DEFAULT_HARD_RULE_FIELD_FILE, PROMPTS_DIR, RESULTS_DIR, TMP_DIR
+from story_med.config.settings import PROMPTS_DIR, RESULTS_DIR, TMP_DIR
 from story_med.models.case_model import StoryAgentRunResult, StoryCaseConfig
+from story_med.services.clinical_case_config import load_hard_rule_fields
 from story_med.utils.yaml_loader import load_yaml_file
 
 
@@ -28,7 +29,7 @@ def run_case_compare_pipeline(
     if not run_result.success:
         raise RuntimeError(f"真实链路执行失败: {case.case_id} {run_result.error}")
 
-    hard_rule_fields = load_yaml_file(DEFAULT_HARD_RULE_FIELD_FILE).get("hard_rule_fields", {})
+    hard_rule_fields = load_hard_rule_fields()
     expected_fields = build_expected_fields(case)
     outline_text = _read_step_text(run_result, "generate_outline")
     story_text = _read_step_text(run_result, "generate_story")
@@ -44,7 +45,7 @@ def run_case_facts_compare_pipeline(llm_config: StoryMedLlmConfig, case: StoryCa
     """使用 case_facts 执行抽取和对比，适合外部 agent 不可用时验证规则链路。"""
     output_dir = TMP_DIR / case.case_id
     output_dir.mkdir(parents=True, exist_ok=True)
-    hard_rule_fields = load_yaml_file(DEFAULT_HARD_RULE_FIELD_FILE).get("hard_rule_fields", {})
+    hard_rule_fields = load_hard_rule_fields()
     expected_fields = build_expected_fields(case)
     outline_result = _extract_and_compare(llm_config, "outline", case.case_facts, hard_rule_fields, expected_fields)
     story_result = _extract_and_compare(llm_config, "story", case.case_facts, hard_rule_fields, expected_fields)
@@ -63,7 +64,7 @@ def run_existing_assets_compare_pipeline(
     output_dir = TMP_DIR / case.case_id
     output_dir.mkdir(parents=True, exist_ok=True)
     asset_dir = RESULTS_DIR / "assets" / case.case_id / session_id
-    hard_rule_fields = load_yaml_file(DEFAULT_HARD_RULE_FIELD_FILE).get("hard_rule_fields", {})
+    hard_rule_fields = load_hard_rule_fields()
     expected_fields = build_expected_fields(case)
     outline_text = _read_asset_text(asset_dir, "generate_outline")
     story_text = _read_asset_text(asset_dir, "generate_story")
@@ -164,6 +165,8 @@ def _build_summary(
         "session_id": run_result.session_id,
         "source_mode": "agent",
         "success": run_result.success,
+        "agent_total_duration_seconds": run_result.total_duration_seconds,
+        "agent_step_timings": _build_step_timings(run_result),
         "outline_failed_fields": _failed_fields(outline_compare),
         "story_failed_fields": _failed_fields(story_compare),
     }
@@ -182,6 +185,7 @@ def _build_existing_assets_summary(
         "session_id": session_id,
         "source_mode": "results_assets",
         "success": True,
+        "agent_step_timings": _load_existing_step_timings(case.case_id, session_id),
         "outline_failed_fields": _failed_fields(outline_compare),
         "story_failed_fields": _failed_fields(story_compare),
     }
@@ -199,9 +203,41 @@ def _build_case_facts_summary(
         "session_id": "",
         "source_mode": "case_facts",
         "success": True,
+        "agent_step_timings": {},
         "outline_failed_fields": _failed_fields(outline_compare),
         "story_failed_fields": _failed_fields(story_compare),
     }
+
+
+def _build_step_timings(run_result: StoryAgentRunResult) -> Dict[str, Any]:
+    """提取核心生成步骤耗时。"""
+    target_steps = {
+        "generate_outline": "获取大纲",
+        "generate_story": "获取故事",
+        "generate_images": "生成图片",
+        "generate_final_image": "获取最终长图",
+    }
+    timings: Dict[str, Any] = {}
+    for step in run_result.steps:
+        if step.step_name not in target_steps:
+            continue
+        timings[step.step_name] = {
+            "label": target_steps[step.step_name],
+            "endpoint": step.endpoint,
+            "started_at": step.started_at,
+            "finished_at": step.finished_at,
+            "duration_seconds": step.duration_seconds,
+        }
+    return timings
+
+
+def _load_existing_step_timings(case_id: str, session_id: str) -> Dict[str, Any]:
+    """从已有 run 结果中读取核心步骤耗时。"""
+    run_path = RESULTS_DIR / "runs" / case_id / f"{session_id}.json"
+    if not run_path.exists():
+        return {}
+    run_result = StoryAgentRunResult.from_dict(json.loads(run_path.read_text(encoding="utf-8")))
+    return _build_step_timings(run_result)
 
 
 def _failed_fields(compare_result: Dict[str, Any]) -> List[str]:

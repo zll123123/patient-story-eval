@@ -8,13 +8,14 @@ from pathlib import Path
 from typing import Dict, List
 
 from story_med.models.case_model import StoryCaseConfig
+from story_med.services.clinical_case_config import apply_clinical_case_overrides
 from story_med.utils.yaml_loader import load_yaml_file
 
 
 def load_story_cases(case_file: Path) -> List[StoryCaseConfig]:
     """加载患者故事用例列表。"""
     if case_file.suffix.lower() == ".md":
-        return _load_story_cases_from_markdown(case_file)
+        return apply_clinical_case_overrides(_load_story_cases_from_markdown(case_file))
     data = load_yaml_file(case_file)
     raw_cases = data.get("cases", [])
     if not isinstance(raw_cases, list):
@@ -24,7 +25,7 @@ def load_story_cases(case_file: Path) -> List[StoryCaseConfig]:
         if not isinstance(raw_case, dict):
             raise ValueError(f"单条 case 必须是字典: {case_file}")
         cases.append(StoryCaseConfig.from_dict(raw_case))
-    return cases
+    return apply_clinical_case_overrides(cases)
 
 
 def _load_story_cases_from_markdown(case_file: Path) -> List[StoryCaseConfig]:

@@ -23,6 +23,13 @@ def test_eval_mode_rejects_invalid_value(monkeypatch: pytest.MonkeyPatch) -> Non
         pipeline._eval_mode()
 
 
+def test_eval_mode_accepts_image_case_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证支持病例图片解析链路模式。"""
+    monkeypatch.setenv("STORY_MED_DEEPEVAL_MODE", "image_case_pipeline")
+
+    assert pipeline._eval_mode() == "image_case_pipeline"
+
+
 def test_selected_cases_filters_by_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证可按环境变量筛选 case。"""
     cases = [

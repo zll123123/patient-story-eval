@@ -19,6 +19,17 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
             "session_id": "session-1",
             "source_mode": "results_assets",
             "success": True,
+            "agent_total_duration_seconds": 12.5,
+            "agent_step_timings": {
+                "generate_outline": {
+                    "label": "获取大纲",
+                    "duration_seconds": 1.1,
+                },
+                "generate_story": {
+                    "label": "获取故事",
+                    "duration_seconds": 2.2,
+                },
+            },
         },
     )
     _write_json(
@@ -100,6 +111,9 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
         "final_image_layout_score": 25.0,
     }
     assert result["scorecard"]["total_score"] == 70.0
+    assert result["agent_total_duration_seconds"] == 12.5
+    assert result["agent_step_timings"]["generate_outline"]["duration_seconds"] == 1.1
+    assert result["agent_step_timings"]["generate_story"]["duration_seconds"] == 2.2
     assert "outline_passed" not in result
     assert "story_passed" not in result
 
@@ -108,4 +122,3 @@ def _write_json(path: Path, data: dict) -> None:
     """写入 JSON 文件。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-

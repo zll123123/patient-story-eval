@@ -59,6 +59,8 @@ def refresh_case_summary(case_id: str) -> Dict[str, Any]:
         "session_id": base_summary.get("session_id", ""),
         "source_mode": base_summary.get("source_mode", ""),
         "success": bool(base_summary.get("success", True)),
+        "agent_total_duration_seconds": base_summary.get("agent_total_duration_seconds", 0.0),
+        "agent_step_timings": base_summary.get("agent_step_timings", {}),
         "outline_failed_fields": _failed_fields(outline_compare),
         "story_failed_fields": _failed_fields(story_compare),
     }
