@@ -80,7 +80,7 @@ def _compare_illustrations(
     results: List[Dict[str, Any]] = []
     for illustration in image_design.get("illustrations") or []:
         image_path = _find_generated_image(asset_dir / "generate_images", str(illustration.get("image_path") or ""))
-        prompt = _build_image_prompt(case, "illustration", illustration, asset_dir)
+        prompt = _build_image_prompt(case, illustration)
         result = call_multimodal_json(config, prompt, [image_path])
         results.append(
             {
@@ -100,11 +100,16 @@ def _compare_final_image(
     image_design: Dict[str, Any],
 ) -> Dict[str, Any]:
     """评估最终长图。"""
+    del image_design
     final_image = _find_single_image(asset_dir / "generate_final_image")
     payload = {
-        "image_type": "final_composite",
         "patient_case": _read_case_parse(asset_dir),
-        "image_design": image_design,
+        "images": [
+            {
+                "image_id": final_image.name,
+                "image_type": "final_composite",
+            }
+        ],
     }
     result = call_multimodal_json(config, _prompt_with_payload(payload), [final_image])
     return {"image_path": str(final_image), "result": result}
@@ -141,15 +146,18 @@ def _validate_final_image_layout(
 
 def _build_image_prompt(
     case: StoryCaseConfig,
-    image_type: str,
     illustration: Dict[str, Any],
-    asset_dir: Path,
 ) -> str:
     """构建单张图片评估提示词。"""
     payload = {
-        "image_type": image_type,
-        "patient_case": _read_case_parse(asset_dir),
-        "expected_image": illustration,
+        "patient_case": case.case_parse or case.case_facts,
+        "images": [
+            {
+                "image_id": illustration.get("id"),
+                "image_type": "illustration",
+                "source_text": illustration.get("source_text"),
+            }
+        ],
     }
     return _prompt_with_payload(payload)
 
@@ -168,7 +176,7 @@ def _validate_image_design(
     """审核图片设计大纲的医学和常识合理性。"""
     llm_config = load_llm_config()
     payload = {
-        "patient_case": _read_case_parse(asset_dir),
+        "patient_case": _read_case_parse(asset_dir) or case.case_parse or case.case_facts,
         "image_design": image_design,
     }
     return call_llm_json(llm_config, _image_design_validation_prompt(payload))
@@ -191,11 +199,7 @@ def _validate_image_consistance(
         "images": _build_consistance_images_payload(asset_dir, image_design),
     }
     prompt = _image_consistance_prompt(payload)
-    image_paths = [
-        Path(item["local_path"])
-        for item in payload["images"]
-        if item.get("local_path")
-    ]
+    image_paths = [Path(item["local_path"]) for item in payload["images"] if item.get("local_path")]
     return call_multimodal_json(config, prompt, image_paths)
 
 

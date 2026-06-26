@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from story_med.config.settings import DEFAULT_CASE_FILE
 from story_med.config.vision_app_config import load_vision_config
 from story_med.services.case_loader import load_story_cases
 from story_med.services.image_compare_pipeline import (
@@ -257,3 +256,72 @@ def test_validate_final_image_layout_uses_original_image(monkeypatch: pytest.Mon
     assert captured["use_thumbnail"] is False
     assert result["status"] == "success"
 
+
+def test_build_image_prompt_only_uses_patient_case_and_images() -> None:
+    """验证单张图片事实审核不再注入图片设计细节。"""
+    from story_med.models.case_model import StoryCaseConfig
+    from story_med.services import image_compare_pipeline as pipeline
+
+    case = StoryCaseConfig(
+        case_id="SM_TEST",
+        description="test",
+        creative_brief="brief",
+        case_facts="facts",
+        hard_rules={},
+    )
+    prompt = pipeline._build_image_prompt(
+        case,
+        {
+            "id": 3,
+            "source_text": "source text",
+            "composition": "短发背影",
+            "prompt": "prompt text",
+        },
+    )
+
+    assert '"patient_case": "facts"' in prompt
+    assert '"images"' in prompt
+    assert '"image_id": 3' in prompt
+    assert '"source_text": "source text"' in prompt
+    assert '"expected_image"' not in prompt
+    assert '"composition": "短发背影"' not in prompt
+
+
+def test_compare_final_image_only_uses_patient_case_and_images(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """验证最终长图事实审核不再注入 image_design。"""
+    from story_med.models.case_model import StoryCaseConfig
+    from story_med.services import image_compare_pipeline as pipeline
+
+    case = StoryCaseConfig(
+        case_id="SM_TEST",
+        description="test",
+        creative_brief="brief",
+        case_facts="facts",
+        hard_rules={},
+    )
+    asset_dir = tmp_path / "assets"
+    (asset_dir / "generate_final_image").mkdir(parents=True)
+    final_path = asset_dir / "generate_final_image" / "final.png"
+    final_path.write_text("x", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(pipeline, "_find_single_image", lambda _: final_path)
+    monkeypatch.setattr(
+        pipeline,
+        "call_multimodal_json",
+        lambda config, prompt, image_paths: captured.update(
+            {"prompt": prompt, "image_paths": image_paths}
+        )
+        or {"overall_passed": True},
+    )
+
+    class DummyConfig:
+        pass
+
+    result = pipeline._compare_final_image(DummyConfig(), case, asset_dir, {"illustrations": [{"composition": "短发"}]})
+
+    assert result["result"]["overall_passed"] is True
+    assert '"patient_case": "facts"' in str(captured["prompt"])
+    assert '"images"' in str(captured["prompt"])
+    assert '"image_type": "final_composite"' in str(captured["prompt"])
+    assert '"image_design"' not in str(captured["prompt"])

@@ -21,4 +21,6 @@ def clean_deepeval_artifacts() -> None:
     """在 DeepEval 重跑开始前清理历史产物。"""
     if os.getenv("STORY_MED_RUN_DEEPEVAL_PIPELINE", "").lower() != "true":
         return
+    if os.getenv("STORY_MED_DEEPEVAL_MODE", "").lower() == "audit_only":
+        return
     clear_evaluation_artifacts()
