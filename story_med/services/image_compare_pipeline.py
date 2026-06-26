@@ -80,7 +80,7 @@ def _compare_illustrations(
     results: List[Dict[str, Any]] = []
     for illustration in image_design.get("illustrations") or []:
         image_path = _find_generated_image(asset_dir / "generate_images", str(illustration.get("image_path") or ""))
-        prompt = _build_image_prompt(case, "illustration", illustration)
+        prompt = _build_image_prompt(case, illustration)
         result = call_multimodal_json(config, prompt, [image_path])
         results.append(
             {
@@ -100,11 +100,16 @@ def _compare_final_image(
     image_design: Dict[str, Any],
 ) -> Dict[str, Any]:
     """评估最终长图。"""
+    del image_design
     final_image = _find_single_image(asset_dir / "generate_final_image")
     payload = {
-        "image_type": "final_composite",
         "patient_case": case.case_facts,
-        "image_design": image_design,
+        "images": [
+            {
+                "image_id": final_image.name,
+                "image_type": "final_composite",
+            }
+        ],
     }
     result = call_multimodal_json(config, _prompt_with_payload(payload), [final_image])
     return {"image_path": str(final_image), "result": result}
@@ -141,14 +146,18 @@ def _validate_final_image_layout(
 
 def _build_image_prompt(
     case: StoryCaseConfig,
-    image_type: str,
     illustration: Dict[str, Any],
 ) -> str:
     """构建单张图片评估提示词。"""
     payload = {
-        "image_type": image_type,
         "patient_case": case.case_facts,
-        "expected_image": illustration,
+        "images": [
+            {
+                "image_id": illustration.get("id"),
+                "image_type": "illustration",
+                "source_text": illustration.get("source_text"),
+            }
+        ],
     }
     return _prompt_with_payload(payload)
 
