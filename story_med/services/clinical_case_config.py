@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List
 
-from story_med.config.settings import DEFAULT_CLINICAL_CASE_FILE, DEFAULT_HARD_RULE_FIELD_FILE
+from story_med.config.settings import DEFAULT_CLINICAL_CASE_FILE, DEFAULT_HARD_RULE_FIELD_FILE, RESULTS_DIR
 from story_med.utils.yaml_loader import load_yaml_file
 
 
@@ -19,9 +19,6 @@ def load_clinical_case_config(config_file: Path = DEFAULT_CLINICAL_CASE_FILE) ->
 
 def load_hard_rule_fields() -> Dict[str, Any]:
     """读取硬规则字段 schema。"""
-    hard_rule_fields = load_clinical_case_config().get("hard_rule_fields")
-    if isinstance(hard_rule_fields, dict) and hard_rule_fields:
-        return hard_rule_fields
     legacy_data = load_yaml_file(DEFAULT_HARD_RULE_FIELD_FILE)
     legacy_fields = legacy_data.get("hard_rule_fields")
     return legacy_fields if isinstance(legacy_fields, dict) else {}
@@ -66,7 +63,7 @@ def normalize_case_parse_text(case_id: str, history: Dict[str, Any]) -> str:
 
 def load_case_parse_text(case_id: str, session_id: str) -> str:
     """读取指定病例最近产出的解析文本。"""
-    case_parse_path = DEFAULT_CLINICAL_CASE_FILE.parent.parent / "results" / "assets" / case_id / session_id / "case_parse" / "case_parse.md"
+    case_parse_path = RESULTS_DIR / "assets" / case_id / session_id / "case_parse" / "case_parse.md"
     if case_parse_path.exists():
         return case_parse_path.read_text(encoding="utf-8")
     return ""

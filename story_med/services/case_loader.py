@@ -37,20 +37,20 @@ def _normalize_case(raw_case: Dict[str, Any]) -> Dict[str, Any]:
     creative_brief = str(raw_case.get("creative_brief") or "").strip()
     hard_rules = raw_case.get("hard_rules") or {}
     case_parse = str(raw_case.get("case_parse") or "").strip()
-    case_facts = case_parse or str(raw_case.get("case_facts") or "").strip()
     normalized_hard_rules = _normalize_hard_rules(hard_rules)
     return {
         "case_id": case_id,
         "description": title,
         "creative_brief": creative_brief,
-        "case_facts": case_facts,
+        "image_dir": str(raw_case.get("image_dir") or "").strip(),
+        "case_facts": case_parse or str(raw_case.get("case_facts") or "").strip(),
         "case_parse": case_parse,
         "hard_rules": normalized_hard_rules,
     }
 
 
 def _normalize_hard_rules(hard_rules: Any) -> Dict[str, Any]:
-    """标准化 hard_rules.field.expected 结构。"""
+    """标准化 hard_rules.expected.value 结构。"""
     if not isinstance(hard_rules, dict):
         return {}
     normalized: Dict[str, Any] = {}
@@ -58,7 +58,7 @@ def _normalize_hard_rules(hard_rules: Any) -> Dict[str, Any]:
         if not isinstance(field_rule, dict):
             continue
         expected = field_rule.get("expected")
-        if expected is None and isinstance(field_rule.get("field"), dict):
-            expected = field_rule["field"].get("expected")
+        if not isinstance(expected, dict) or "value" not in expected:
+            expected = {"value": expected}
         normalized[field_name] = {"expected": expected}
     return normalized

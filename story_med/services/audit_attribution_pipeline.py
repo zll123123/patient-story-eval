@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 from story_med.clients.llm_client import call_llm_json
 from story_med.config.llm_app_config import StoryMedLlmConfig
 from story_med.config.settings import RESULTS_DIR, PROMPTS_DIR, TMP_DIR
+from story_med.services.clinical_baseline import load_clinical_baseline
 from story_med.services.case_loader import get_story_case
 
 ATTRIBUTION_PROMPT_FILE = PROMPTS_DIR / "audit_analysis.md"
@@ -53,7 +54,7 @@ def _build_payload(case_dir: Path, summary: Dict[str, Any], failed_audits: List[
     case_id = str(summary.get("case_id") or "")
     case = _load_case(case_id)
     payload: Dict[str, Any] = {
-        "case_facts": case.case_facts,
+        "case_facts": load_clinical_baseline(case),
         "creative_brief": case.creative_brief,
         "summary": summary,
         "failed_audits": failed_audits,

@@ -11,6 +11,7 @@ from story_med.clients.llm_client import call_llm_json
 from story_med.config.llm_app_config import StoryMedLlmConfig
 from story_med.config.settings import PROMPTS_DIR, RESULTS_DIR, TMP_DIR
 from story_med.models.case_model import StoryAgentRunResult, StoryCaseConfig
+from story_med.services.clinical_baseline import load_clinical_baseline
 from story_med.services.clinical_case_config import load_hard_rule_fields
 from story_med.utils.yaml_loader import load_yaml_file
 
@@ -42,13 +43,14 @@ def run_case_compare_pipeline(
 
 
 def run_case_facts_compare_pipeline(llm_config: StoryMedLlmConfig, case: StoryCaseConfig) -> Dict[str, Any]:
-    """使用 case_facts 执行抽取和对比，适合外部 agent 不可用时验证规则链路。"""
+    """使用 clinical_extract.md 执行抽取和对比，适合外部 agent 不可用时验证规则链路。"""
     output_dir = TMP_DIR / case.case_id
     output_dir.mkdir(parents=True, exist_ok=True)
     hard_rule_fields = load_hard_rule_fields()
     expected_fields = build_expected_fields(case)
-    outline_result = _extract_and_compare(llm_config, "outline", case.case_facts, hard_rule_fields, expected_fields)
-    story_result = _extract_and_compare(llm_config, "story", case.case_facts, hard_rule_fields, expected_fields)
+    baseline_text = load_clinical_baseline(case)
+    outline_result = _extract_and_compare(llm_config, "outline", baseline_text, hard_rule_fields, expected_fields)
+    story_result = _extract_and_compare(llm_config, "story", baseline_text, hard_rule_fields, expected_fields)
     _write_compare_artifacts(case, "", output_dir, outline_result, story_result)
     summary = _build_case_facts_summary(case, outline_result["compare"], story_result["compare"])
     _write_json(summary, output_dir / "summary.json")
@@ -77,12 +79,12 @@ def run_existing_assets_compare_pipeline(
 
 
 def build_expected_fields(case: StoryCaseConfig) -> Dict[str, Any]:
-    """从 case.hard_rules.field.expected 提取预期值。"""
+    """从 case.hard_rules.expected.value 提取预期值。"""
     expected_fields: Dict[str, Any] = {}
     for field_name, rule in case.hard_rules.items():
         if isinstance(rule, dict):
-            field_rule = rule.get("field") if isinstance(rule.get("field"), dict) else rule
-            expected_fields[field_name] = field_rule.get("expected")
+            expected = rule.get("expected") if isinstance(rule.get("expected"), dict) else {}
+            expected_fields[field_name] = expected.get("value")
     return expected_fields
 
 
@@ -197,12 +199,12 @@ def _build_case_facts_summary(
     outline_compare: Dict[str, Any],
     story_compare: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """构建基于 case_facts 的汇总结果。"""
+    """构建基于 clinical_extract.md 的汇总结果。"""
     return {
         "case_id": case.case_id,
         "description": case.description,
         "session_id": "",
-        "source_mode": "case_facts",
+        "source_mode": "clinical_extract",
         "success": True,
         "agent_step_timings": {},
         "outline_failed_fields": _failed_fields(outline_compare),

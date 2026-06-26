@@ -1,233 +1,278 @@
 # 患者故事 Agent 评测
 
-## 业务流程
-这个流程对应 Bruno 里的 5 个接口：
-1. `POST /api/session`
-2. `POST /api/{session_id}/outline`，请求体包含 `creative_brief` 和 `case_facts`
-3. `POST /api/{session_id}/story`，请求体包含 `creative_brief` 和 `case_facts`
-4. `POST /api/{session_id}/images`
-5. `POST /api/{session_id}/generate`
+## 当前业务流程
 
-适配层会把每一步的原始响应、归一化响应和 `session_id` 一起保存。`outline`、`story`、`images` 和 `generate` 返回的 OSS 链接会被下载到本地，方便后续评测直接读取文件。
+当前评测链路以病例图片为输入，分两段执行：
 
-## 目录说明
-- `config/`：运行配置与环境变量
-- `data/`：YAML 测试数据
-- `clients/`：HTTP 请求封装
-- `adapters/`：患者故事 agent 适配层
-- `models/`：测试用例与结果模型
-- `services/`：用例加载与结果落盘
-- `evals/`：pytest / DeepEval 执行入口
-- `docs/`：指标说明
+1. 病例图片提取基准：`story_med/img/{image_dir}/` -> `story_med/output/{image_dir}/clinical_extract.md`
+2. 患者故事生成和审核：调用图片病例版 Agent 生成大纲、Story、配图、长图，然后执行硬规则对比、图片审核、Layout 审核、归因、打分和 DeepEval / Confident AI 上报
 
-## 用例数据
-硬规则字段模板放在 `story_med/data/hard_rule_fields.yaml`，用于统一管理需要抽取和对比的字段、中文含义和值类型。
+`clinical_extract.md` 是测试侧病例事实基准。后续审核需要病例事实输入时，只读取：
 
-预置 case 放在 `story_med/data/story_cases.yaml`，其中：
-- `creative_brief`：生成风格与内容要求
-- `case_facts`：患者原始事实
-- `hard_rules`：每条 case 对应的硬规则预期值
-
-当前已内置的硬规则字段包括：
-- `disease`
-- `disease_subtype`
-- `stage`
-- `gender`
-- `age_group`
-- `treatments`
-- `outcome`
-
-## 运行方式
-首次运行先安装依赖：
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+```text
+story_med/output/{image_dir}/clinical_extract.md
 ```
 
-只验证适配器封装，不请求远程接口：
+如果该文件不存在，审核直接失败，不会 fallback 到 `case_facts` 或病例解析服务输出。
 
-```bash
-PYTHONPATH=. python3 -m pytest tests/test_patient_story_agent_unit.py -q
+## 关键输入
+
+测试 case 统一维护在：
+
+```text
+story_med/data/clinical_case.yaml
 ```
 
-在仓库根目录执行单条真实链路：
+每条 case 至少包含：
 
-```bash
-PYTHONPATH=. python3 -m pytest tests/test_patient_story_agent.py -q
+```yaml
+clinical_cases:
+  - case_id: SM_003
+    title: 卢肺癌病例
+    creative_brief: 生成风格要求
+    image_dir: "卢-肺癌"
+    hard_rules:
+      demographics:
+        expected:
+          value:
+            gender: "女"
+            age: 71
 ```
 
-如果你要用 DeepEval CLI：
+病例图片目录由 `image_dir` 指定：
 
-```bash
-PYTHONPATH=. deepeval test run tests/test_patient_story_agent.py
+```text
+story_med/img/卢-肺癌/入院检查-CT.jpg
+story_med/img/卢-肺癌/病理检查.jpg
 ```
 
-如果你要用统一的 Deepeval 双模式评估入口：
+硬规则字段模板维护在：
+
+```text
+story_med/data/hard_rule_fields.yaml
+```
+
+当前 hardrule 只维护病例事实红线字段：
+
+- `demographics`
+- `primary_diagnosis`
+- `visible_signs`
+- `treatment_timeline`
+- `key_metrics`
+- `observed_outcomes`
+
+## 第一步：提取病例基准
+
+新增病例图片后，先运行 clinical extract。该步骤只生成病例事实基准，不调用患者故事 Agent。
+
+```bash
+PYTHONPATH=. python3 story_med/tools/run_clinical_extract.py \
+  --image-dir 卢-肺癌
+```
+
+输出位置：
+
+```text
+story_med/output/卢-肺癌/clinical_extract.md
+story_med/output/卢-肺癌/clinical_extract.json
+```
 
 说明：
-- 同一个测试入口文件，但每个 case 会作为一个独立 pytest item 上报到 Deepeval / Confident AI
-- `STORY_MED_CASE_IDS` 支持用 `,`、`;`、`|` 分隔多个 case id
 
-```bash
-STORY_MED_RUN_DEEPEVAL_PIPELINE=true \
-STORY_MED_DEEPEVAL_MODE=full_pipeline \
-STORY_MED_LLM_ENV_FILE=/path/to/dev.env \
-PYTHONPATH=. deepeval test run tests/test_patient_story_deepeval_pipeline.py
-```
+- `clinical_extract.md`：后续审核实际使用的病例事实基准。
+- `clinical_extract.json`：包含图片目录、图片列表、原始输出等元信息，便于程序追踪。
+- 后续重跑完整审核时，不会自动重跑 clinical extract。
 
-2. 只基于已有 `results/assets` 重跑审核和打分
+## 第二步：补测试数据
 
-```bash
-STORY_MED_RUN_DEEPEVAL_PIPELINE=true \
-STORY_MED_DEEPEVAL_MODE=audit_only \
-STORY_MED_LLM_ENV_FILE=/path/to/dev.env \
-PYTHONPATH=. deepeval test run tests/test_patient_story_deepeval_pipeline.py
-```
+将新病例补到 `story_med/data/clinical_case.yaml`：
 
-3. 使用病例图片解析版链路生成产物后继续复用现有审核
+- `case_id`：如 `SM_003`
+- `image_dir`：必须等于 `story_med/img/` 下的病例图片文件夹名
+- `creative_brief`：生成风格要求
+- `hard_rules.expected.value`：从 `clinical_extract.md` 中维护少量病例红线事实
 
-图片按 case 编号放入 `story_med/img/{case_id}/`，同一目录下支持多张图片，运行时会全部上传并传入解析版接口。
+原则：
 
-```text
-story_med/img/SM_001/病例基础信息.png
-story_med/img/SM_001/检查结果.png
-```
+- 只维护病例里明确写出的事实。
+- 不维护广告法、合规禁用词等非病例事实。
+- 不确定的字段不要硬填。
+
+## 第三步：完整生成、审核、归因、打分并上报
+
+以当前已有的 case2 和 case3 为例：
 
 ```bash
 python3 story_med/tools/run_patient_story_deepeval.py \
   --mode image_case_pipeline \
-  --case-ids SM_001
+  --case-ids "SM_002,SM_003" \
+  --identifier patient-story-sm002-sm003-full-audit
 ```
 
-如需使用其他图片根目录，可设置：
+这个命令会执行：
+
+- 清空本轮生成结果目录：`story_med/results/temp`、`story_med/results/assets`、`story_med/results/runs`
+- 按 `clinical_case.yaml` 的 `image_dir` 读取病例图片
+- 调用 `story_med/adapters/patient_case_image_agent.py` 生成大纲、Story、配图、最终长图
+- 对大纲和 Story 先抽取 hardrule 结构，再和 `clinical_case.yaml` 的 expected 对比
+- 使用 `clinical_extract.md` 执行图片设计审核、图片事实一致性审核、长图 Layout 审核
+- 执行归因 `audit_analysis`
+- 计算 summary 和 scorecard
+- 通过 DeepEval 上报 Confident AI
+
+执行前必须确认：
+
+```text
+story_med/output/卢胜-肝癌/clinical_extract.md
+story_med/output/卢-肺癌/clinical_extract.md
+```
+
+如果要只跑单个 case：
 
 ```bash
-STORY_MED_CASE_IMAGE_DIR=/path/to/img \
 python3 story_med/tools/run_patient_story_deepeval.py \
   --mode image_case_pipeline \
-  --case-ids SM_001
+  --case-ids SM_003 \
+  --identifier patient-story-sm003-full-audit
 ```
 
-也可以直接用参数传入：
+`--case-ids` 支持 `,`、`;`、`|` 分隔多个 case：
 
 ```bash
 python3 story_med/tools/run_patient_story_deepeval.py \
   --mode image_case_pipeline \
-  --case-ids SM_001 \
-  --case-image-dir /path/to/img
+  --case-ids "SM_001;SM_002|SM_003"
 ```
 
-常用可选参数：
+## 只重跑审核和打分
 
-- `STORY_MED_CASE_IDS=SM_001,SM_002`
-  只跑指定 case
-- `STORY_MED_CASE_IDS=SM_001;SM_002|SM_003`
-  同样有效，可混用多种分隔符
-- `STORY_MED_DEEPEVAL_MODE=image_case_pipeline`
-  使用 `story_med/img/{case_id}/` 下的病例图片走解析版生成链路，后续审核流程保持不变
-- `STORY_MED_PIPELINE_INCLUDE_VISUAL_STEPS=true|false`
-  仅在 `full_pipeline` 模式下生效，控制是否重跑图片生成接口
-- `STORY_MED_RUN_AUDIT_ATTRIBUTION=true|false`
-  默认开启，审核和打分后追加归因步骤；显式设为 `false` 可关闭
+如果已有 `story_med/results/assets/{case_id}/{session_id}/` 生成产物，只想重跑审核、归因、打分和上报：
 
-统一汇总会输出到：
+```bash
+python3 story_med/tools/run_patient_story_deepeval.py \
+  --mode audit_only \
+  --case-ids "SM_002,SM_003" \
+  --identifier patient-story-sm002-sm003-audit-only
+```
+
+注意：
+
+- `audit_only` 不会重跑 Agent 生成接口。
+- `audit_only` 仍然要求对应 case 的 `clinical_extract.md` 已存在。
+- `audit_only` 使用当前 `results/assets` 中最新 session。
+
+## DeepEval / Confident AI
+
+统一入口 `story_med/tools/run_patient_story_deepeval.py` 内部会调用：
 
 ```text
-story_med/results/temp/deepeval_patient_story_summary.json
+deepeval test run tests/test_patient_story_deepeval_pipeline.py
 ```
 
-批量跑种子 case 到硬规则抽取/对比阶段：
+上报 Confident AI 前，需先完成登录：
 
 ```bash
-STORY_MED_RUN_HARD_RULE_PIPELINE=true \
-STORY_MED_LLM_ENV_FILE=/path/to/dev.env \
-PYTHONPATH=. python3 -m pytest tests/test_patient_story_hard_rule_pipeline.py -q
+deepeval login
 ```
 
-默认会调用真实患者故事 agent，执行到 `outline` 和 `story` 后再调用 LLM prompt 做字段抽取和对比。若外部 agent 暂不可用，只想验证 case、prompt 和对比链路，可以显式使用 `case_facts` 源模式：
+本地每个 case 会作为独立 pytest item 上报。可通过 `--identifier` 标记本次运行。
 
-```bash
-STORY_MED_RUN_HARD_RULE_PIPELINE=true \
-STORY_MED_PIPELINE_SOURCE_MODE=case_facts \
-STORY_MED_LLM_ENV_FILE=/path/to/dev.env \
-PYTHONPATH=. python3 -m pytest tests/test_patient_story_hard_rule_pipeline.py -q
-```
+## 输出目录
 
-只跑指定 case：
-
-```bash
-STORY_MED_RUN_HARD_RULE_PIPELINE=true \
-STORY_MED_CASE_IDS=SM_002,SM_003 \
-STORY_MED_LLM_ENV_FILE=/path/to/dev.env \
-PYTHONPATH=. python3 -m pytest tests/test_patient_story_hard_rule_pipeline.py -q
-```
-
-评估最近一次真实链路生成的图片：
-
-```bash
-STORY_MED_RUN_IMAGE_COMPARE=true \
-STORY_MED_VISION_API_KEY=<dashscope_api_key> \
-PYTHONPATH=. python3 -m pytest tests/test_patient_story_image_compare.py -q
-```
-
-默认视觉模型配置已切到阿里云百炼 OpenAI 兼容接口：
-
-- `vision_base_url=https://dashscope.aliyuncs.com/compatible-mode/v1`
-- `vision_model=qwen3.7-plus`
-- `api_key` 会按以下优先级读取：`STORY_MED_VISION_API_KEY` > `DASHSCOPE_API_KEY` > `STORY_MED_LLM_API_KEY` > `CSL_LLM_API_KEY` > `OPENAI_API_KEY`
-
-如果直接复用本地百炼 Key，可这样执行：
-
-```bash
-STORY_MED_RUN_IMAGE_COMPARE=true \
-DASHSCOPE_API_KEY=<dashscope_api_key> \
-PYTHONPATH=. python3 -m pytest tests/test_patient_story_image_compare.py -q
-```
-
-如果使用本地 NHTAI 多模态网关：
-
-```bash
-STORY_MED_RUN_IMAGE_COMPARE=true \
-STORY_MED_VISION_PROVIDER=nhtai \
-STORY_MED_VISION_ENV_FILE=/path/to/.env \
-STORY_MED_VISION_MODEL=qwen2.5-vl-72b-instruct \
-PYTHONPATH=. python3 -m pytest tests/test_patient_story_image_compare.py -q
-```
-
-## 输出
-运行结果会写入：
+Agent 生成产物：
 
 ```text
-story_med/results/patient_story_run.json
+story_med/results/assets/{case_id}/{session_id}/
 ```
 
-里面包含：
-- `session_response`
-- `outline_response`
-- `story_response`
-- `images_response`
-- `final_image_response`
-- `downloaded_assets`
-- 每一步的原始请求与响应
+包括：
 
-如果接口超时或失败，结果文件仍会写入已完成步骤，并通过 `failed_step` 标记失败位置。
+- `case_parse/case_parse.md`：病例解析服务输出，仅用于链路归因，不作为评估基准
+- `generate_outline/outline.md`
+- `generate_story/story.md`
+- `generate_images/image_design.json`
+- `generate_images/*.png`
+- `generate_final_image/index.html`
+- `generate_final_image/index.png`
 
-OSS 资源会保存到：
-
-```text
-story_med/results/assets/{case_id}/{session_id}/{step_name}/
-```
-
-硬规则抽取和对比中间结果会保存到：
+审核和汇总产物：
 
 ```text
 story_med/results/temp/{case_id}/
 ```
 
-图片事实审核结果会保存到：
+包括：
+
+- `outline_extracted_fields.json`
+- `outline_hard_rule_compare.json`
+- `story_extracted_fields.json`
+- `story_hard_rule_compare.json`
+- `image_design_validation.json`
+- `image_consistant_validation.json`
+- `image_fact_validation.json`
+- `final_image_layout_validation.json`
+- `audit_analysis.json`
+- `summary.json`
+
+统一 DeepEval 汇总：
 
 ```text
-story_med/results/temp/{case_id}/image_fact_validation.json
+story_med/results/temp/deepeval_patient_story_summary.json
+```
+
+单次 Agent 运行原始记录：
+
+```text
+story_med/results/runs/{case_id}/{session_id}.json
+story_med/results/patient_story_run.json
+```
+
+## 配置
+
+普通配置：
+
+```text
+story_med/config/config.yaml
+story_med/config/vision_config.yaml
+story_med/config/llm_config.yaml
+```
+
+敏感信息：
+
+```text
+story_med/config/dev.env
+```
+
+视觉模型默认使用百炼 OpenAI 兼容接口：
+
+- `vision_base_url=https://dashscope.aliyuncs.com/compatible-mode/v1`
+- `vision_model=qwen3.7-plus`
+- API Key 读取优先级：`STORY_MED_VISION_API_KEY` > `DASHSCOPE_API_KEY` > `STORY_MED_LLM_API_KEY` > `CSL_LLM_API_KEY` > `OPENAI_API_KEY`
+
+## 常用检查命令
+
+确认 case 能被加载：
+
+```bash
+PYTHONPATH=. python3 - <<'PY'
+from story_med.services.case_loader import load_story_cases
+print([(case.case_id, case.image_dir) for case in load_story_cases()])
+PY
+```
+
+确认 clinical extract 已存在：
+
+```bash
+find story_med/output -maxdepth 2 -name clinical_extract.md | sort
+```
+
+跑核心单测：
+
+```bash
+PYTHONPATH=. python3 -m pytest \
+  tests/test_clinical_extract_pipeline.py \
+  tests/test_patient_story_image_compare.py \
+  tests/test_audit_attribution_pipeline.py \
+  tests/test_hard_rule_llm_pipeline.py \
+  -q
 ```

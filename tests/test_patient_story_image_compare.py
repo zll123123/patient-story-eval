@@ -82,7 +82,7 @@ def test_build_success_report_writes_image_design_validation_file(monkeypatch: p
     monkeypatch.setattr(
         pipeline,
         "_validate_image_design",
-        lambda case, image_design: {"is_passed": False, "summary": "bad design", "issues": [{"issue_id": "1"}]},
+        lambda case, asset_dir, image_design: {"is_passed": False, "summary": "bad design", "issues": [{"issue_id": "1"}]},
     )
     monkeypatch.setattr(
         pipeline,
@@ -134,7 +134,7 @@ def test_build_success_report_writes_image_consistance_file(monkeypatch: pytest.
     monkeypatch.setattr(pipeline, "TMP_DIR", tmp_path / "tmp")
     monkeypatch.setattr(pipeline, "_read_image_design", lambda _: {"illustrations": [{"id": 1, "image_path": "a.png"}]})
     monkeypatch.setattr(pipeline, "_build_consistance_images_payload", lambda asset_dir, image_design: [{"local_path": "dummy.png"}])
-    monkeypatch.setattr(pipeline, "_validate_image_design", lambda case, image_design: {"is_passed": True, "summary": "ok", "issues": []})
+    monkeypatch.setattr(pipeline, "_validate_image_design", lambda case, asset_dir, image_design: {"is_passed": True, "summary": "ok", "issues": []})
     monkeypatch.setattr(
         pipeline,
         "_validate_image_consistance",
@@ -185,7 +185,7 @@ def test_build_success_report_writes_final_image_layout_file(monkeypatch: pytest
     monkeypatch.setattr(pipeline, "TMP_DIR", tmp_path / "tmp")
     monkeypatch.setattr(pipeline, "_read_image_design", lambda _: {"illustrations": [{"id": 1, "image_path": "a.png"}]})
     monkeypatch.setattr(pipeline, "_build_consistance_images_payload", lambda asset_dir, image_design: [{"local_path": "dummy.png"}])
-    monkeypatch.setattr(pipeline, "_validate_image_design", lambda case, image_design: {"is_passed": True, "summary": "ok", "issues": []})
+    monkeypatch.setattr(pipeline, "_validate_image_design", lambda case, asset_dir, image_design: {"is_passed": True, "summary": "ok", "issues": []})
     monkeypatch.setattr(
         pipeline,
         "_validate_image_consistance",
@@ -226,6 +226,7 @@ def test_validate_final_image_layout_uses_original_image(monkeypatch: pytest.Mon
         case_id="SM_TEST",
         description="test",
         creative_brief="brief",
+        image_dir="case-images",
         case_facts="facts",
         hard_rules={},
     )
@@ -234,10 +235,12 @@ def test_validate_final_image_layout_uses_original_image(monkeypatch: pytest.Mon
     (asset_dir / "generate_final_image" / "final.png").write_text("x", encoding="utf-8")
     prompt_file = tmp_path / "final_image_layout_validate.md"
     prompt_file.write_text("prompt", encoding="utf-8")
+    _write_clinical_baseline(tmp_path, "case-images", "clinical baseline")
 
     captured: dict = {}
 
     monkeypatch.setattr(pipeline, "PROMPTS_DIR", tmp_path)
+    monkeypatch.setattr("story_med.services.clinical_baseline.RESULTS_DIR", tmp_path / "results")
     monkeypatch.setattr(pipeline, "_find_single_image", lambda _: asset_dir / "generate_final_image" / "final.png")
     monkeypatch.setattr(
         pipeline,
@@ -257,7 +260,7 @@ def test_validate_final_image_layout_uses_original_image(monkeypatch: pytest.Mon
     assert result["status"] == "success"
 
 
-def test_build_image_prompt_only_uses_patient_case_and_images() -> None:
+def test_build_image_prompt_only_uses_patient_case_and_images(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """验证单张图片事实审核不再注入图片设计细节。"""
     from story_med.models.case_model import StoryCaseConfig
     from story_med.services import image_compare_pipeline as pipeline
@@ -266,9 +269,12 @@ def test_build_image_prompt_only_uses_patient_case_and_images() -> None:
         case_id="SM_TEST",
         description="test",
         creative_brief="brief",
+        image_dir="case-images",
         case_facts="facts",
         hard_rules={},
     )
+    _write_clinical_baseline(tmp_path, "case-images", "clinical baseline")
+    monkeypatch.setattr("story_med.services.clinical_baseline.RESULTS_DIR", tmp_path / "results")
     prompt = pipeline._build_image_prompt(
         case,
         {
@@ -279,7 +285,7 @@ def test_build_image_prompt_only_uses_patient_case_and_images() -> None:
         },
     )
 
-    assert '"patient_case": "facts"' in prompt
+    assert '"patient_case": "clinical baseline"' in prompt
     assert '"images"' in prompt
     assert '"image_id": 3' in prompt
     assert '"source_text": "source text"' in prompt
@@ -296,15 +302,18 @@ def test_compare_final_image_only_uses_patient_case_and_images(monkeypatch: pyte
         case_id="SM_TEST",
         description="test",
         creative_brief="brief",
+        image_dir="case-images",
         case_facts="facts",
         hard_rules={},
     )
+    _write_clinical_baseline(tmp_path, "case-images", "clinical baseline")
     asset_dir = tmp_path / "assets"
     (asset_dir / "generate_final_image").mkdir(parents=True)
     final_path = asset_dir / "generate_final_image" / "final.png"
     final_path.write_text("x", encoding="utf-8")
     captured: dict[str, object] = {}
 
+    monkeypatch.setattr("story_med.services.clinical_baseline.RESULTS_DIR", tmp_path / "results")
     monkeypatch.setattr(pipeline, "_find_single_image", lambda _: final_path)
     monkeypatch.setattr(
         pipeline,
@@ -321,7 +330,39 @@ def test_compare_final_image_only_uses_patient_case_and_images(monkeypatch: pyte
     result = pipeline._compare_final_image(DummyConfig(), case, asset_dir, {"illustrations": [{"composition": "短发"}]})
 
     assert result["result"]["overall_passed"] is True
-    assert '"patient_case": "facts"' in str(captured["prompt"])
+    assert '"patient_case": "clinical baseline"' in str(captured["prompt"])
     assert '"images"' in str(captured["prompt"])
     assert '"image_type": "final_composite"' in str(captured["prompt"])
     assert '"image_design"' not in str(captured["prompt"])
+
+
+def test_build_image_prompt_prefers_clinical_extract(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """验证图片事实审核优先使用 clinical_extract.md 作为病例基准。"""
+    from story_med.models.case_model import StoryCaseConfig
+    from story_med.services import clinical_baseline
+    from story_med.services import image_compare_pipeline as pipeline
+
+    baseline_file = tmp_path / "output" / "case-images" / "clinical_extract.md"
+    baseline_file.parent.mkdir(parents=True)
+    baseline_file.write_text("clinical baseline", encoding="utf-8")
+    monkeypatch.setattr(clinical_baseline, "RESULTS_DIR", tmp_path / "results")
+
+    case = StoryCaseConfig(
+        case_id="SM_TEST",
+        description="test",
+        creative_brief="brief",
+        image_dir="case-images",
+        case_facts="facts",
+        hard_rules={},
+    )
+
+    prompt = pipeline._build_image_prompt(case, {"id": 1, "source_text": "source"})
+
+    assert '"patient_case": "clinical baseline"' in prompt
+
+
+def _write_clinical_baseline(tmp_path: Path, image_dir: str, content: str) -> None:
+    """写入测试用病例基准文件。"""
+    baseline_file = tmp_path / "output" / image_dir / "clinical_extract.md"
+    baseline_file.parent.mkdir(parents=True, exist_ok=True)
+    baseline_file.write_text(content, encoding="utf-8")

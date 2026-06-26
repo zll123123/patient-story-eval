@@ -81,9 +81,18 @@ def _validate_text(hard_rules: Dict[str, Any], text: str) -> List[HardRuleCheckR
     }
     results: List[HardRuleCheckResult] = []
     for field, check_func in checks.items():
-        rule = dict(hard_rules.get(field) or {})
+        rule = _normalize_rule(hard_rules.get(field))
         results.append(check_func(rule, text))
     return results
+
+
+def _normalize_rule(rule: Any) -> Dict[str, Any]:
+    """标准化单个硬规则字段。"""
+    if not isinstance(rule, dict):
+        return {}
+    if isinstance(rule.get("field"), dict):
+        return dict(rule["field"])
+    return dict(rule)
 
 
 def _all_passed(results: List[HardRuleCheckResult]) -> bool:

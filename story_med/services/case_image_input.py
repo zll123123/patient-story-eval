@@ -52,3 +52,20 @@ def list_case_images(case_id: str, image_root: Path | None = None) -> List[Path]
     if not images:
         raise RuntimeError(f"病例图片目录没有可上传图片: {case_dir}")
     return images
+
+
+def list_case_images_by_path(image_dir: Path) -> List[Path]:
+    """读取指定图片目录下的病例图片列表。"""
+    if not image_dir.exists():
+        raise FileNotFoundError(f"病例图片目录不存在: {image_dir}")
+    images = sorted(
+        [
+            path
+            for path in image_dir.iterdir()
+            if path.is_file() and path.suffix.lower() in SUPPORTED_IMAGE_SUFFIXES
+        ],
+        key=lambda path: path.name,
+    )
+    if not images:
+        raise RuntimeError(f"病例图片目录没有可上传图片: {image_dir}")
+    return images

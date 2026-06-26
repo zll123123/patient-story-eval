@@ -13,6 +13,7 @@ class StoryCaseConfig:
     case_id: str
     description: str
     creative_brief: str
+    image_dir: str = ""
     case_facts: str = ""
     case_parse: str = ""
     hard_rules: Dict[str, Any] = field(default_factory=dict)
@@ -23,6 +24,7 @@ class StoryCaseConfig:
             "case_id": self.case_id,
             "description": self.description,
             "creative_brief": self.creative_brief,
+            "image_dir": self.image_dir,
             "case_facts": self.case_facts,
             "case_parse": self.case_parse,
             "hard_rules": self.hard_rules,
@@ -35,6 +37,7 @@ class StoryCaseConfig:
             case_id=str(data.get("case_id") or ""),
             description=str(data.get("description") or ""),
             creative_brief=str(data.get("creative_brief") or ""),
+            image_dir=str(data.get("image_dir") or ""),
             case_facts=str(data.get("case_facts") or ""),
             case_parse=str(data.get("case_parse") or ""),
             hard_rules=dict(data.get("hard_rules") or {}),

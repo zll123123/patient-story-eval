@@ -71,6 +71,7 @@ def test_run_case_audit_attribution_calls_model_when_any_audit_fails(
         return {"root_cause": "test"}
 
     monkeypatch.setattr(pipeline, "call_llm_json", fake_call_llm_json)
+    monkeypatch.setattr(pipeline, "load_clinical_baseline", lambda case: "clinical baseline")
     monkeypatch.setattr(
         pipeline,
         "_load_case",
@@ -79,6 +80,7 @@ def test_run_case_audit_attribution_calls_model_when_any_audit_fails(
             (),
             {
                 "case_id": case_id,
+                "image_dir": "case-images",
                 "case_facts": "facts",
                 "creative_brief": "brief",
             },
@@ -93,6 +95,7 @@ def test_run_case_audit_attribution_calls_model_when_any_audit_fails(
     assert result["attribution"] == {"root_cause": "test"}
     assert "outline_passed" in captured["prompt"]
     assert "image_consistant_passed" in captured["prompt"]
+    assert "clinical baseline" in captured["prompt"]
     written = json.loads((case_dir / "audit_analysis.json").read_text(encoding="utf-8"))
     assert written["status"] == "success"
 
@@ -114,4 +117,3 @@ def _dummy_llm_config():
         api_key="test-key",
         timeout_seconds=30,
     )
-

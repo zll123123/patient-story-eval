@@ -12,6 +12,7 @@ from story_med.config.llm_app_config import load_llm_config
 from story_med.config.settings import PROMPTS_DIR, RESULTS_DIR, TMP_DIR
 from story_med.config.vision_app_config import StoryMedVisionConfig
 from story_med.models.case_model import StoryCaseConfig
+from story_med.services.clinical_baseline import load_clinical_baseline
 
 
 def run_latest_image_compare(config: StoryMedVisionConfig, case: StoryCaseConfig) -> Dict[str, Any]:
@@ -103,7 +104,7 @@ def _compare_final_image(
     del image_design
     final_image = _find_single_image(asset_dir / "generate_final_image")
     payload = {
-        "patient_case": _read_case_parse(asset_dir),
+        "patient_case": _patient_case_baseline(case, asset_dir),
         "images": [
             {
                 "image_id": final_image.name,
@@ -132,7 +133,7 @@ def _validate_final_image_layout(
         }
     final_image = _find_single_image(asset_dir / "generate_final_image")
     payload = {
-        "patient_case": _read_case_parse(asset_dir),
+        "patient_case": _patient_case_baseline(case, asset_dir),
         "image_design": image_design,
     }
     prompt = _final_image_layout_prompt(prompt_file, payload)
@@ -150,7 +151,7 @@ def _build_image_prompt(
 ) -> str:
     """构建单张图片评估提示词。"""
     payload = {
-        "patient_case": case.case_parse or case.case_facts,
+        "patient_case": _patient_case_baseline(case),
         "images": [
             {
                 "image_id": illustration.get("id"),
@@ -176,7 +177,7 @@ def _validate_image_design(
     """审核图片设计大纲的医学和常识合理性。"""
     llm_config = load_llm_config()
     payload = {
-        "patient_case": _read_case_parse(asset_dir) or case.case_parse or case.case_facts,
+        "patient_case": _patient_case_baseline(case, asset_dir),
         "image_design": image_design,
     }
     return call_llm_json(llm_config, _image_design_validation_prompt(payload))
@@ -237,6 +238,12 @@ def _read_case_parse(asset_dir: Path) -> str:
     if case_parse_path.exists():
         return case_parse_path.read_text(encoding="utf-8")
     return ""
+
+
+def _patient_case_baseline(case: StoryCaseConfig, asset_dir: Path | None = None) -> str:
+    """读取图片审核使用的病例基准文本。"""
+    del asset_dir
+    return load_clinical_baseline(case)
 
 
 def _read_latest_run_result() -> Dict[str, Any]:

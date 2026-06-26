@@ -1,38 +1,73 @@
 hard_rule_fields:
-  disease:
-    name: 核心疾病
-    value_type: string
-    description: 患者主要诊断疾病
-  disease_subtype:
-    name: 疾病亚型
+  demographics:
+    name: 患者基础信息
     value_type: object
-    description: 分子分型、病理分型等关键信息
+    description: 患者不可错的基础身份信息，用于约束叙事主体和视觉年龄。
     properties:
-      pathology:
-        name: 病理分型
+      gender:
+        name: 性别
         value_type: string
-        description: 病理学诊断类型
-      molecular:
-        name: 分子分型
-        value_type: string
-        description: 分子检测结果或关键突变
-  stage:
-    name: 疾病阶段
-    value_type: string
-    description: 肿瘤分期或疾病严重程度
-  gender:
-    name: 性别
-    value_type: string
-    description: 男性/女性
-  age_group:
-    name: 年龄段
-    value_type: string
-    description: 建议不用精确年龄，而是年龄段
-  treatments:
-    name: 核心治疗方式
+        description: 病例明确记录的患者性别。
+      age:
+        name: 年龄
+        value_type: integer
+        description: 病例明确记录的患者年龄。
+
+  primary_diagnosis:
+    name: 核心诊断
     value_type: array
-    description: 真实接受过的治疗
-  outcome:
-    name: 当前疾病状态
-    value_type: string
-    description: 当前结局或疗效状态
+    description: 病例明确记录的核心疾病诊断，禁止换病种或遗漏核心诊断。
+
+  visible_signs:
+    name: 关键症状/体征
+    value_type: array
+    description: 病例明确出现、可影响叙事或视觉呈现的关键症状和体征。
+
+  treatment_timeline:
+    name: 治疗时序
+    value_type: array
+    description: 按病例原文维护的治疗阶段、药物/治疗方式、调整说明和已记录结果。
+    item_schema:
+      timepoint:
+        name: 时间点/阶段
+        value_type: string
+        description: 病例原文中的治疗阶段或时间点。
+      treatments:
+        name: 治疗/药物列表
+        value_type: array
+        description: 当前阶段明确出现的治疗、手术、介入、用药或方案，尽量保持原文顺序。
+      change:
+        name: 调整说明
+        value_type: string
+        description: 当前阶段相较上一阶段的新增、停用、换药或治疗变化。
+      observed_outcome:
+        name: 记录结果
+        value_type: string
+        description: 病例原文在该阶段明确记录的症状、指标或病情变化。
+
+  key_metrics:
+    name: 关键指标变化
+    value_type: array
+    description: 病例明确记录且与疾病进展、疗效或风险高度相关的数值指标。
+    item_schema:
+      metric:
+        name: 指标名称
+        value_type: string
+        description: 指标名称。
+      before:
+        name: 基线/治疗前
+        value_type: string
+        description: 治疗前或较早时间点的指标值。
+      after:
+        name: 后续/治疗后
+        value_type: string
+        description: 后续时间点的指标值。
+      timepoint:
+        name: 后续时间点
+        value_type: string
+        description: after 对应的时间点或阶段。
+
+  observed_outcomes:
+    name: 病例明确记载的治疗结果
+    value_type: array
+    description: 仅维护病例中明确出现的结果、转归或前后对比，不做额外医学推断。

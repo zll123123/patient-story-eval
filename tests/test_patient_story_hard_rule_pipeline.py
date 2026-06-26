@@ -11,7 +11,7 @@ import pytest
 from story_med.adapters.patient_story_agent import PatientStoryAgentAdapter
 from story_med.config.app_config import load_app_config
 from story_med.config.llm_app_config import load_llm_config
-from story_med.config.settings import DEFAULT_CASE_FILE, DEFAULT_CONFIG_FILE, RESULTS_DIR, TMP_DIR
+from story_med.config.settings import DEFAULT_CLINICAL_CASE_FILE, DEFAULT_CONFIG_FILE, RESULTS_DIR, TMP_DIR
 from story_med.models.case_model import StoryCaseConfig
 from story_med.services.case_loader import load_story_cases
 from story_med.services.hard_rule_llm_pipeline import (
@@ -25,7 +25,7 @@ def test_seed_cases_run_to_hard_rule_compare() -> None:
     """批量执行种子 case 到硬规则对比结果阶段。"""
     if os.getenv("STORY_MED_RUN_HARD_RULE_PIPELINE", "").lower() != "true":
         pytest.skip("需要设置 STORY_MED_RUN_HARD_RULE_PIPELINE=true 才执行外部链路")
-    cases = _select_seed_cases(load_story_cases(DEFAULT_CASE_FILE))
+    cases = _select_seed_cases(load_story_cases(DEFAULT_CLINICAL_CASE_FILE))
     assert cases, "未找到需要执行的种子 case"
 
     llm_config = load_llm_config()

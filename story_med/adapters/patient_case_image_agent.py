@@ -24,7 +24,7 @@ from story_med.clients.story_client import StoryApiResponse, create_session, ext
 from story_med.config.app_config import StoryMedConfig
 from story_med.config.settings import ASSETS_DIR, TMP_DIR
 from story_med.models.case_model import StoryAgentRunResult, StoryCaseConfig, StoryStepResult
-from story_med.services.case_image_input import list_case_images
+from story_med.services.case_image_input import list_case_images_by_path
 from story_med.services.clinical_case_config import normalize_case_parse_text
 
 
@@ -119,12 +119,24 @@ class PatientCaseImageAgentAdapter:
     def _upload_case_images(self, case: StoryCaseConfig) -> List[Dict[str, str]]:
         """上传当前 case 目录下的全部病例图片。"""
         files: List[Dict[str, str]] = []
-        for image_path in list_case_images(case.case_id):
+        for image_path in self._resolve_case_images(case):
             upload_info = create_upload_url(self._session, self._config, image_path.name)
             content_type = str(upload_info.get("content_type") or _guess_content_type(image_path))
             upload_file(str(upload_info["upload_url"]), image_path, content_type, self._config)
             files.append({"file_name": image_path.name, "file_key": str(upload_info["file_key"])})
         return files
+
+    def _resolve_case_images(self, case: StoryCaseConfig) -> List[Path]:
+        """按 case.image_dir 读取病例图片。"""
+        image_dir = case.image_dir.strip()
+        if not image_dir:
+            raise FileNotFoundError(f"病例图片目录未配置: {case.case_id}")
+        image_path = Path(image_dir).expanduser()
+        if not image_path.is_absolute():
+            from story_med.config.settings import CASE_IMAGE_DIR
+
+            image_path = CASE_IMAGE_DIR / image_path
+        return list_case_images_by_path(image_path.resolve())
 
     def _stream_task(self, case_id: str, session_id: str, payload: Dict[str, Any]) -> StoryApiResponse:
         """启动 SSE 任务并返回摘要响应。"""
