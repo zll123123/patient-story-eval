@@ -111,7 +111,7 @@ python3 story_med/tools/run_patient_story_deepeval.py \
 
 这个命令会执行：
 
-- 清空本轮生成结果目录：`story_med/results/temp`、`story_med/results/assets`、`story_med/results/runs`
+- 指定 `--case-ids` 时只运行这些病例，不清空历史结果目录
 - 按 `clinical_case.yaml` 的 `image_dir` 读取病例图片
 - 调用 `story_med/adapters/patient_case_image_agent.py` 生成大纲、Story、配图、最终长图
 - 对大纲和 Story 先抽取 hardrule 结构，再和 `clinical_case.yaml` 的 expected 对比
@@ -143,6 +143,20 @@ python3 story_med/tools/run_patient_story_deepeval.py \
   --mode image_case_pipeline \
   --case-ids "SM_001;SM_002|SM_003"
 ```
+
+如果要全量重跑所有 case，省略 `--case-ids`：
+
+```bash
+python3 story_med/tools/run_patient_story_deepeval.py \
+  --mode image_case_pipeline \
+  --identifier patient-story-all-full-audit
+```
+
+只有这种全量重跑会在开始前清空：
+
+- `story_med/results/temp`
+- `story_med/results/assets`
+- `story_med/results/runs`
 
 ## 只重跑审核和打分
 

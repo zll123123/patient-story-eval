@@ -319,3 +319,393 @@ clinical_cases:
             - "肿瘤标志物在后续复查中均恢复正常范围"
             - "术后靶向辅助治疗控制病情，延缓复发"
             - "副作用小"
+
+  - case_id: SM_004
+    title: zht肝癌病例
+    creative_brief: 希望这个患者故事整体专业、克制、信息准确，重点呈现肝癌的发现、诊断、手术/介入/靶向/免疫治疗、复查指标变化和疾病转归。叙事要覆盖常见的临床节点：入院发现、病理或影像确诊、治疗方案调整、肿瘤标志物或影像随访、病情进展或缓解、当前状态。不夸大疗效，不写治愈承诺，风格保持温暖但不过分煽情。
+    image_dir: "zht-肝癌"
+    hard_rules:
+      demographics:
+        name: 患者基础信息
+        expected:
+          value:
+            gender: "女"
+            age: 55
+      primary_diagnosis:
+        name: 核心诊断
+        expected:
+          value:
+            - "肝恶性肿瘤"
+            - "肝细胞癌"
+            - "乙型肝炎肝硬化（失代偿期）"
+            - "多发性肝囊肿"
+            - "亚临床甲状腺功能减退"
+            - "单纯性肾囊肿"
+            - "肺诊断性影像异常"
+            - "房性期前收缩"
+      visible_signs:
+        name: 关键症状/体征
+        expected:
+          value:
+            - "发现HBsAg阳性7年"
+            - "发现肝内占位1天"
+            - "发现肝内占位5月"
+      treatment_timeline:
+        name: 治疗时序
+        expected:
+          value:
+            - timepoint: "2025-03-10"
+              treatments:
+                - "腹腔镜探查"
+                - "肝部分切除"
+                - "膈肌修补术"
+              change: "首次住院手术治疗"
+              observed_outcome: "术后病理示肝细胞性肝癌III-IV级"
+            - timepoint: "2025-03-29至2025-06-28"
+              treatments:
+                - "单药治疗"
+              change: "术后多次单药治疗"
+              observed_outcome: "6月9日停仑伐"
+            - timepoint: "2025-08-05"
+              treatments:
+                - "再次入院评估"
+              change: "考虑肝内、肝外转移"
+              observed_outcome: ""
+            - timepoint: "2025-08-11"
+              treatments:
+                - "肝包膜肿瘤穿刺活检术"
+                - "微波消融术"
+              change: "行穿刺活检+消融"
+              observed_outcome: ""
+      key_metrics:
+        name: 关键指标变化
+        expected:
+          value:
+            - metric: "AFP"
+              before: "23483.28 ng/ml"
+              after: "5134.00 ng/ml"
+              timepoint: "2025-08-05"
+            - metric: "异常凝血酶原"
+              before: "6571.00 ng/ml"
+              after: "69.13 ng/ml"
+              timepoint: "2025-06-03"
+      observed_outcomes:
+        name: 病例明确记载的治疗结果
+        expected:
+          value:
+            - "患者目前出现肝内和肝外多发转移灶，病情进展"
+            - "甲胎蛋白由术后低点持续升高至5134.00 ng/ml"
+            - "影像学提示双肺多发结节较前增多、增大，考虑转移瘤"
+
+  - case_id: SM_005
+    title: 尤红详肝癌病例
+    creative_brief: 希望这个患者故事整体专业、克制、信息准确，重点呈现肝癌/转移瘤的分期判断、化疗或靶向免疫治疗、血象和肿瘤标志物变化、以及病情控制或进展的全过程。叙事应覆盖常见病例节点：入院主诉、诊断、基线异常、治疗周期、复查指标、疗效评价和当前状态。不夸大疗效，不做治愈承诺。
+    image_dir: "尤红详-肝癌"
+    hard_rules:
+      demographics:
+        name: 患者基础信息
+        expected:
+          value:
+            gender: "男"
+            age: 52
+      primary_diagnosis:
+        name: 核心诊断
+        expected:
+          value:
+            - "肝右前叶上段占位性病变"
+            - "肝癌"
+            - "低分化癌"
+            - "腺癌"
+            - "腹腔及腹膜后增大淋巴结"
+            - "骨髓抑制"
+      visible_signs:
+        name: 关键症状/体征
+        expected:
+          value:
+            - "未记录"
+      treatment_timeline:
+        name: 治疗时序
+        expected:
+          value:
+            - timepoint: "4.16"
+              treatments:
+                - "度伐利尤单抗注射液"
+                - "贝伐珠单抗注射液"
+                - "顺铂注射液"
+                - "盐酸吉西他滨注射液"
+              change: "初始方案"
+              observed_outcome: ""
+            - timepoint: "5.9/5.18"
+              treatments:
+                - "度伐利尤单抗注射液"
+                - "贝伐珠单抗注射液"
+                - "顺铂注射液"
+                - "盐酸吉西他滨注射液"
+              change: "顺铂、吉西他滨减量"
+              observed_outcome: ""
+            - timepoint: "6.1/6.8"
+              treatments:
+                - "度伐利尤单抗注射液"
+                - "贝伐珠单抗注射液"
+                - "顺铂注射液"
+                - "盐酸吉西他滨注射液"
+              change: "吉西他滨继续减量"
+              observed_outcome: ""
+            - timepoint: "6.22/6.30"
+              treatments:
+                - "度伐利尤单抗注射液"
+                - "贝伐珠单抗注射液"
+                - "顺铂注射液"
+                - "盐酸吉西他滨注射液"
+              change: "吉西他滨继续减量"
+              observed_outcome: ""
+            - timepoint: "7.13/7.21"
+              treatments:
+                - "度伐利尤单抗注射液"
+                - "贝伐珠单抗注射液"
+                - "顺铂注射液"
+                - "盐酸吉西他滨注射液"
+              change: "维持上一周期剂量"
+              observed_outcome: ""
+            - timepoint: "8.2/8.9"
+              treatments:
+                - "度伐利尤单抗注射液"
+                - "贝伐珠单抗注射液"
+                - "顺铂注射液"
+                - "盐酸吉西他滨注射液"
+              change: "维持上一周期剂量"
+              observed_outcome: ""
+      key_metrics:
+        name: 关键指标变化
+        expected:
+          value:
+            - metric: "甲胎蛋白 (AFP)"
+              before: "13.40 ng/mL"
+              after: "未记录"
+              timepoint: "2025-08-26"
+      observed_outcomes:
+        name: 病例明确记载的治疗结果
+        expected:
+          value:
+            - "未记录"
+
+  - case_id: SM_006
+    title: 淋巴瘤病例1
+    creative_brief: 希望这个患者故事整体专业、克制、信息准确，重点呈现淋巴瘤从发现、病理确认、随访、进展到治疗和缓解的完整过程。叙事要覆盖常见临床节点：初诊发现、PET-CT或病理确诊、是否有治疗指征、后续随访、复发或进展、化疗及疗效评价、当前状态。不夸大疗效，不写治愈承诺。
+    image_dir: "淋巴瘤-病例1"
+    hard_rules:
+      demographics:
+        name: 患者基础信息
+        expected:
+          value:
+            gender: "男"
+            age: 60
+      primary_diagnosis:
+        name: 核心诊断
+        expected:
+          value:
+            - "滤泡性非霍奇金淋巴瘤"
+            - "弥漫性大B细胞淋巴瘤（转化）"
+      visible_signs:
+        name: 关键症状/体征
+        expected:
+          value:
+            - "确诊滤泡淋巴4年"
+            - "腹腔及后腹膜多发肿大淋巴结"
+      treatment_timeline:
+        name: 治疗时序
+        expected:
+          value:
+            - timepoint: "2020-11-19"
+              treatments:
+                - "左侧腹股沟淋巴结穿刺活检"
+              change: "病理确诊低级别滤泡性淋巴瘤"
+              observed_outcome: ""
+            - timepoint: "2020-12"
+              treatments:
+                - "住院完善检查评估"
+                - "颈部淋巴结穿刺活检"
+              change: "评估无治疗指征"
+              observed_outcome: "后续定期随访复查"
+            - timepoint: "2024-08-09"
+              treatments:
+                - "PET-CT检查"
+                - "胃肠镜检查"
+              change: "提示淋巴瘤浸润可能，进一步完善检查"
+              observed_outcome: ""
+            - timepoint: "化疗周期（共6次）"
+              treatments:
+                - "化疗药物"
+              change: "已行6次化疗"
+              observed_outcome: "末次化疗：2025-01-01"
+      key_metrics:
+        name: 关键指标变化
+        expected:
+          value:
+            - metric: "肠系膜淋巴结最大病灶"
+              before: "5.0x3.6 cm"
+              after: "2.2x0.7 cm"
+              timepoint: "2025-02-12"
+      observed_outcomes:
+        name: 病例明确记载的治疗结果
+        expected:
+          value:
+            - "Lugano评分：PR（部分缓解）"
+            - "其余前片所见异常高代谢病灶本次显像均已消失"
+            - "肠系膜淋巴结代谢较前减低，形态较前退缩"
+
+  - case_id: SM_007
+    title: 费法详腺癌病例
+    creative_brief: 希望这个患者故事整体专业、克制、信息准确，重点呈现肝内胆管癌/腺癌从发现、诊断、基线检查、治疗方案、指标变化到疗效评价的完整过程。叙事要覆盖常见病例节点：主诉、影像/病理、HBV背景、基线异常、治疗、复查、当前状态。不夸大疗效，不写治愈承诺。
+    image_dir: "费法详-腺癌"
+    hard_rules:
+      demographics:
+        name: 患者基础信息
+        expected:
+          value:
+            gender: "男"
+            age: 76
+      primary_diagnosis:
+        name: 核心诊断
+        expected:
+          value:
+            - "肝恶性肿瘤"
+            - "肝内胆管癌"
+            - "小胆管型"
+            - "慢性乙型病毒性肝炎"
+            - "高血压"
+      visible_signs:
+        name: 关键症状/体征
+        expected:
+          value:
+            - "检查发现肝占位5天"
+            - "皮肤无黄染"
+            - "巩膜无黄染"
+      treatment_timeline:
+        name: 治疗时序
+        expected:
+          value:
+            - timepoint: "2025-09-21至2025-09-22"
+              treatments:
+                - "仑伐替尼"
+                - "达伯舒"
+                - "化疗"
+              change: "出院后转当地医院继续治疗，开始靶向及免疫联合化疗"
+              observed_outcome: ""
+      key_metrics:
+        name: 关键指标变化
+        expected:
+          value:
+            - metric: "乙肝病毒DNA定量"
+              before: "1.65E+02 IU/ml"
+              after: "未记录"
+              timepoint: "基线"
+      observed_outcomes:
+        name: 病例明确记载的治疗结果
+        expected:
+          value:
+            - "未记录"
+  - case_id: SM_008-验证超短要求
+    title: 安达唐病例
+    creative_brief: 生成一个温馨的患者故事
+    image_dir: "安达唐-孙"
+    hard_rules:
+      demographics:
+        name: 患者基础信息
+        expected:
+          value:
+            gender: "男"
+            age: 69
+
+      primary_diagnosis:
+        name: 核心诊断
+        expected:
+          value:
+            - "糖尿病"
+            - "慢性肾病"
+            - "高血压"
+
+      visible_signs:
+        name: 关键症状/体征
+        expected:
+          value:
+            - "双下肢水肿"
+            - "泡沫尿"
+
+      treatment_timeline:
+        name: 治疗时序
+        expected:
+          value:
+            - timepoint: "治疗前"
+              treatments:
+                - "利格列汀"
+                - "阿托伐他汀"
+                - "螺内酯"
+                - "呋塞米片"
+                - "阿里沙坦酯片"
+              change: "初始方案"
+              observed_outcome: ""
+            - timepoint: "治疗一周"
+              treatments:
+                - "利格列汀"
+                - "安达唐"
+                - "阿托伐他汀"
+                - "螺内酯"
+                - "呋塞米片"
+                - "阿里沙坦酯片"
+              change: "新增安达唐"
+              observed_outcome: ""
+            - timepoint: "治疗四周"
+              treatments:
+                - "利格列汀"
+                - "安达唐"
+                - "阿托伐他汀"
+                - "螺内酯"
+                - "呋塞米片"
+                - "阿里沙坦酯片"
+              change: "无调整"
+              observed_outcome: "尿蛋白转阴，FPG、PBG、HbA1c、Scr较治疗前下降"
+            - timepoint: "治疗八周"
+              treatments:
+                - "利格列汀"
+                - "安达唐"
+                - "阿托伐他汀"
+                - "螺内酯"
+                - "呋塞米片"
+                - "阿里沙坦酯片"
+              change: "无调整"
+              observed_outcome: "FPG降至6.4 mmol/L，HbA1c降至6.3%，Scr降至128.3 umol/L，尿蛋白阴性"
+
+      key_metrics:
+        name: 关键指标变化
+        expected:
+          value:
+            - metric: "FPG"
+              before: "14.47 mmol/L"
+              after: "6.4 mmol/L"
+              timepoint: "治疗八周"
+            - metric: "PBG"
+              before: "17.8 mmol/L"
+              after: "8.6 mmol/L"
+              timepoint: "治疗八周"
+            - metric: "HbA1c"
+              before: "12.6%"
+              after: "6.3%"
+              timepoint: "治疗八周"
+            - metric: "Scr"
+              before: "162.3 umol/L"
+              after: "128.3 umol/L"
+              timepoint: "治疗八周"
+            - metric: "尿蛋白"
+              before: "(+)"
+              after: "(-)"
+              timepoint: "治疗八周"
+
+      observed_outcomes:
+        name: 病例明确记载的治疗结果
+        expected:
+          value:
+            - "FPG由14.47降至6.4"
+            - "HbA1c由12.6降至6.3"
+            - "Scr由162.3降至128.3"
+            - "尿蛋白由(+)转为(-)"
