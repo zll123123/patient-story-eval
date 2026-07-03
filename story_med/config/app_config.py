@@ -12,6 +12,10 @@ from story_med.utils.yaml_loader import load_yaml_file
 DEFAULT_TIMEOUT_SECONDS = 60
 DEFAULT_VERIFY_SSL = True
 DEFAULT_ACCEPT = "application/json"
+DEFAULT_ADJUST_BASE_URL = "https://pharma-content-hub-java-dev.nullht.com"
+DEFAULT_ADJUST_ACCEPT = "text/event-stream;charset=UTF-8, text/event-stream"
+DEFAULT_ADJUST_AUTH_USERNAME = "admin"
+DEFAULT_ADJUST_AUTH_PASSWORD = "Admin@123456"
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
@@ -29,6 +33,13 @@ class StoryMedConfig:
     user_agent: str
     origin: str
     referer: str
+    adjust_base_url: str
+    adjust_auth_token: str
+    adjust_origin: str
+    adjust_referer: str
+    adjust_accept: str
+    adjust_auth_username: str
+    adjust_auth_password: str
     active_env: str
     result_file: str
 
@@ -76,6 +87,34 @@ def load_app_config(config_path: Path = DEFAULT_CONFIG_FILE) -> StoryMedConfig:
         user_agent=os.getenv("STORY_MED_USER_AGENT", str(config_data.get("user_agent", DEFAULT_USER_AGENT))),
         origin=os.getenv("STORY_MED_ORIGIN", str(config_data.get("origin", ""))),
         referer=os.getenv("STORY_MED_REFERER", str(config_data.get("referer", ""))),
+        adjust_base_url=os.getenv(
+            "STORY_MED_ADJUST_BASE_URL",
+            str(config_data.get("adjust_base_url", DEFAULT_ADJUST_BASE_URL)),
+        ).rstrip("/"),
+        adjust_auth_token=os.getenv(
+            "STORY_MED_ADJUST_AUTH_TOKEN",
+            os.getenv("authorization", str(config_data.get("adjust_auth_token", ""))),
+        ),
+        adjust_origin=os.getenv(
+            "STORY_MED_ADJUST_ORIGIN",
+            str(config_data.get("adjust_origin", config_data.get("origin", ""))),
+        ),
+        adjust_referer=os.getenv(
+            "STORY_MED_ADJUST_REFERER",
+            str(config_data.get("adjust_referer", config_data.get("referer", ""))),
+        ),
+        adjust_accept=os.getenv(
+            "STORY_MED_ADJUST_ACCEPT",
+            str(config_data.get("adjust_accept", DEFAULT_ADJUST_ACCEPT)),
+        ),
+        adjust_auth_username=os.getenv(
+            "STORY_MED_ADJUST_AUTH_USERNAME",
+            str(config_data.get("adjust_auth_username", DEFAULT_ADJUST_AUTH_USERNAME)),
+        ),
+        adjust_auth_password=os.getenv(
+            "STORY_MED_ADJUST_AUTH_PASSWORD",
+            str(config_data.get("adjust_auth_password", DEFAULT_ADJUST_AUTH_PASSWORD)),
+        ),
         active_env=os.getenv("STORY_MED_ACTIVE_ENV", str(config_data.get("active_env", "dev"))),
         result_file=os.getenv(
             "STORY_MED_RESULT_FILE",

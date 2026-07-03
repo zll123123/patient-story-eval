@@ -1,0 +1,276 @@
+intent_schema:
+  types:
+    add:
+      name: 新增
+      description: 新增原本不存在的内容或元素。
+
+    remove:
+      name: 删除
+      description: 删除已有内容或元素。
+
+    modify:
+      name: 修改
+      description: 对已有内容做局部调整。
+
+    rewrite:
+      name: 改写
+      description: 不改事实，只改表达方式或叙事视角。
+
+    correct:
+      name: 纠正
+      description: 修正错误、不准确或不合理内容。
+
+  targets:
+    company_statement:
+      name: 公司声明
+      description: 页尾或角落的生成方说明文字。
+      aliases:
+        - 公司声明
+        - 底部声明
+        - 生成说明
+      affects_nodes:
+        - html
+      source_of_truth: html
+      requires_regeneration: false
+      fact_sensitive: false
+      examples:
+        - 增加一个声明：由零假设科技有限公司生成
+        - 删除底部的公司说明
+
+    compliance_statement:
+      name: 合规说明
+      description: 页尾免责声明、风险提示、合规备注。
+      aliases:
+        - 合规说明
+        - 风险提示
+        - 免责声明
+      affects_nodes:
+        - html
+      source_of_truth: html
+      requires_regeneration: false
+      fact_sensitive: false
+      examples:
+        - 删除底部的合规说明
+
+    family_background:
+      name: 家庭背景
+      description: 家庭成员、照护关系、支持情况。
+      aliases:
+        - 家庭背景
+        - 家庭情况
+        - 家属支持
+      affects_nodes:
+        - story
+        - html
+      source_of_truth: story
+      requires_regeneration: false
+      fact_sensitive: true
+      examples:
+        - 增加一些患者和家人的背景
+        - 补充家属陪伴的内容
+
+    narrative_perspective:
+      name: 叙事视角
+      description: 医生视角、患者视角、第三人称。
+      aliases:
+        - 叙事视角
+        - 讲述方式
+        - 口吻
+      affects_nodes:
+        - story
+        - html
+      source_of_truth: story
+      requires_regeneration: false
+      fact_sensitive: false
+      examples:
+        - 改成患者自述的方式
+        - 改成医生讲述病例的口吻
+
+    specific_image:
+      name: 指定图片
+      description: 某一张具体生成图片。
+      aliases:
+        - 图1
+        - 图片1
+        - 第一张图
+        - 第二张图
+      affects_nodes:
+        - image
+        - html
+      source_of_truth: image
+      requires_regeneration: true
+      fact_sensitive: true
+      examples:
+        - 把图1改得更自然一点
+        - 第2张图更符合生活常识
+
+    image_detail:
+      name: 图片细节
+      description: 调整图片中的局部视觉细节，如人物表情、动作、服饰、道具、光线或局部构图元素。
+      aliases:
+        - 图片细节
+        - 画面细节
+        - 局部细节
+      affects_nodes:
+        - image
+        - html
+      source_of_truth: image
+      requires_regeneration: true
+      fact_sensitive: true
+      examples:
+        - 把人物表情改得自然一点
+        - 调整输液场景里的动作细节
+
+    image_size:
+      name: 图片尺寸
+      description: 调整图片大小、比例、裁切范围或输出尺寸。
+      aliases:
+        - 图片尺寸
+        - 图片大小
+        - 图片比例
+        - 裁切大小
+      affects_nodes:
+        - image
+        - html
+      source_of_truth: image
+      requires_regeneration: true
+      fact_sensitive: false
+      examples:
+        - 把这张图缩小一点
+        - 图片比例改成更适合竖版展示
+
+    image_layout:
+      name: 图片布局
+      description: 调整图片在长图中的摆放位置、占比、留白和与文本的相对关系。
+      aliases:
+        - 图片位置
+        - 图片排版
+        - 图片占比
+      affects_nodes:
+        - html
+      source_of_truth: html
+      requires_regeneration: false
+      fact_sensitive: false
+      examples:
+        - 把图片放大一点但不要改内容
+        - 让图片和文字的间距更紧凑
+
+    background_style:
+      name: 背景样式
+      description: 长图背景颜色、渐变、底纹。
+      aliases:
+        - 背景颜色
+        - 背景
+        - 底色
+      affects_nodes:
+        - html
+      source_of_truth: html
+      requires_regeneration: false
+      fact_sensitive: false
+      examples:
+        - 把背景改成米白色
+        - 整体背景不要纯白
+
+    layout:
+      name: 页面布局
+      description: 调整长图整体排版、模块位置、信息层级和阅读节奏。
+      aliases:
+        - 布局
+        - 排版
+        - 版式
+      affects_nodes:
+        - html
+      source_of_truth: html
+      requires_regeneration: false
+      fact_sensitive: false
+      examples:
+        - 整体排版更紧凑一点
+        - 重点信息再突出一些
+
+    title:
+      name: 标题
+      description: 调整患者故事主标题、副标题或首屏标题表达。
+      aliases:
+        - 标题
+        - 主标题
+        - 副标题
+      affects_nodes:
+        - story
+        - html
+      source_of_truth: story
+      requires_regeneration: false
+      fact_sensitive: false
+      examples:
+        - 标题改得更克制一点
+        - 主标题不要那么像广告
+
+    ending:
+      name: 结尾
+      description: 调整故事收尾方式、总结段落或落点表达。
+      aliases:
+        - 结尾
+        - 收尾
+        - 最后一段
+      affects_nodes:
+        - story
+        - html
+      source_of_truth: story
+      requires_regeneration: false
+      fact_sensitive: false
+      examples:
+        - 结尾再温和一点
+        - 最后一段精简一些
+
+    language_style:
+      name: 语言风格
+      description: 调整语言风格、语气、专业度和信息密度，不改变事实。
+      aliases:
+        - 风格
+        - 语气
+        - 表达方式
+        - 文风
+      affects_nodes:
+        - story
+        - html
+      source_of_truth: story
+      requires_regeneration: false
+      fact_sensitive: false
+      examples:
+        - 语言更温暖一点
+        - 写得更像病例分享而不是宣传文案
+
+    follow_up:
+      name: 随访信息
+      description: 调整复查节点、长期随访、病情变化或疗效追踪相关内容。
+      aliases:
+        - 随访
+        - 复查
+        - 后续变化
+      affects_nodes:
+        - outline
+        - story
+        - html
+      source_of_truth: outline
+      requires_regeneration: true
+      fact_sensitive: true
+      examples:
+        - 补充后续随访信息
+        - 把复查节点写清楚一些
+
+    treatment_detail:
+      name: 治疗细节
+      description: 药物、剂量、疗程、治疗节点。
+      aliases:
+        - 治疗细节
+        - 用药细节
+        - 疗程细节
+      affects_nodes:
+        - outline
+        - story
+        - html
+      source_of_truth: outline
+      requires_regeneration: true
+      fact_sensitive: true
+      examples:
+        - 把用药剂量改准确
+        - 补充治疗周期信息

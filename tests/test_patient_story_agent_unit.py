@@ -19,6 +19,13 @@ def build_config() -> StoryMedConfig:
         user_agent="pytest",
         origin="",
         referer="",
+        adjust_base_url="https://adjust.example.com",
+        adjust_auth_token="",
+        adjust_origin="",
+        adjust_referer="",
+        adjust_accept="text/event-stream",
+        adjust_auth_username="admin",
+        adjust_auth_password="password",
         active_env="dev",
         result_file="results/patient_story_run.json",
     )

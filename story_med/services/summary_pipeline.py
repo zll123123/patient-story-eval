@@ -14,7 +14,8 @@ STORY_FACT_MAX_SCORE = 20.0
 IMAGE_DESIGN_MAX_SCORE = 10.0
 IMAGE_CONSISTENCY_MAX_SCORE = 10.0
 IMAGE_FACT_MAX_SCORE = 10.0
-FINAL_IMAGE_LAYOUT_MAX_SCORE = 30.0
+STORY_COMPLIANCE_MAX_SCORE = 10.0
+FINAL_IMAGE_LAYOUT_MAX_SCORE = 20.0
 
 FINAL_IMAGE_LAYOUT_MISSING_DEDUCTION = 10.0
 FINAL_IMAGE_LAYOUT_POSITION_DEDUCTION = 5.0
@@ -65,6 +66,7 @@ def refresh_case_summary(case_id: str) -> Dict[str, Any]:
         "story_failed_fields": _failed_fields(story_compare),
     }
 
+    _merge_story_compliance_summary(case_dir, summary, audit_overview)
     _merge_image_summary(case_dir, summary, audit_overview)
     summary["audit_overview"] = audit_overview
     summary["all_passed"] = all(audit_overview.values())
@@ -76,6 +78,32 @@ def refresh_case_summary(case_id: str) -> Dict[str, Any]:
     )
     _write_json(summary, case_dir / "summary.json")
     return summary
+
+
+def _merge_story_compliance_summary(
+    case_dir: Path,
+    summary: Dict[str, Any],
+    audit_overview: Dict[str, bool],
+) -> None:
+    """合并 Story 合规审核汇总。
+
+    Args:
+        case_dir: 当前 case 临时目录。
+        summary: 汇总结果对象。
+        audit_overview: 审核总览对象。
+    """
+    validation_path = case_dir / "story_compliance_validation.json"
+    if not validation_path.exists():
+        return
+    validation = _read_json(validation_path)
+    audit_overview["story_compliance_passed"] = bool(validation.get("is_passed"))
+    summary["story_compliance"] = {
+        "status": validation.get("status", ""),
+        "passed": bool(validation.get("is_passed")),
+        "issue_count": len(validation.get("issues") or []),
+        "summary": validation.get("summary", ""),
+    }
+    summary["story_compliance_detail"] = validation
 
 
 def _merge_image_summary(case_dir: Path, summary: Dict[str, Any], audit_overview: Dict[str, bool]) -> None:
@@ -161,6 +189,7 @@ def _build_scorecard(
     """
     outline_score = _fact_ratio_score(outline_compare, OUTLINE_FACT_MAX_SCORE)
     story_score = _fact_ratio_score(story_compare, STORY_FACT_MAX_SCORE)
+    story_compliance_score = _story_compliance_score(summary)
     image_design_score = _image_design_score(summary)
     image_consistency_score = _image_consistency_score(audit_overview)
     image_fact_score = _image_fact_score(summary)
@@ -175,6 +204,7 @@ def _build_scorecard(
     total_score = round(
         outline_score
         + story_score
+        + story_compliance_score
         + image_design_score
         + image_consistency_score
         + image_fact_score
@@ -189,6 +219,7 @@ def _build_scorecard(
         "breakdown": {
             "outline_fact_score": outline_score,
             "story_fact_score": story_score,
+            "story_compliance_score": story_compliance_score,
             "image_design_score": image_design_score,
             "image_consistency_score": image_consistency_score,
             "image_fact_score": image_fact_score,
@@ -255,6 +286,24 @@ def _image_design_score(summary: Dict[str, Any]) -> float:
     failed_count = _failed_image_count_from_issue_ids(image_design.get("issue_ids") or [], total_count)
     passed_count = max(total_count - failed_count, 0)
     return round(passed_count / total_count * IMAGE_DESIGN_MAX_SCORE, 2)
+
+
+def _story_compliance_score(summary: Dict[str, Any]) -> float:
+    """按违规项数量计算 Story 合规得分。
+
+    Args:
+        summary: 当前汇总对象。
+
+    Returns:
+        Story 合规得分。
+    """
+    story_compliance = summary.get("story_compliance") or {}
+    issue_count = int(story_compliance.get("issue_count") or 0)
+    if issue_count <= 0 and bool(story_compliance.get("passed")):
+        return STORY_COMPLIANCE_MAX_SCORE
+    if issue_count == 1:
+        return STORY_COMPLIANCE_MAX_SCORE / 2
+    return 0.0
 
 
 def _image_consistency_score(audit_overview: Dict[str, bool]) -> float:

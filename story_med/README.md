@@ -175,6 +175,38 @@ python3 story_med/tools/run_patient_story_deepeval.py \
 - `audit_only` 仍然要求对应 case 的 `clinical_extract.md` 已存在。
 - `audit_only` 使用当前 `results/assets` 中最新 session。
 
+## 调整已生成的患者故事结果
+
+如果已经完成患者故事生成，需要基于自然语言要求调整结果，可以单独运行调整节点。该节点不会自动插入完整生成或审核流程。
+
+```bash
+STORY_MED_ADJUST_AUTH_TOKEN='你的访问 token' \
+python3 story_med/tools/run_story_adjustment.py \
+  --case-id SM_001 \
+  --session-id 5a11cf9e-2960-4801-aefc-dd8e0f7d952a \
+  --task-id 2071468448195149825 \
+  --message "图片风格调整的更写实一点"
+```
+
+默认调整接口配置在 `story_med/config/config.yaml`：
+
+- `adjust_base_url`: `https://pharma-content-hub-java-dev.nullht.com`
+- `adjust_origin`: `https://pharma-hub.nullht.com`
+- `adjust_referer`: `https://pharma-hub.nullht.com/`
+
+敏感 token 不写入代码，优先通过环境变量传入：
+
+```text
+STORY_MED_ADJUST_AUTH_TOKEN
+```
+
+输出位置：
+
+```text
+story_med/results/temp/{case_id}/{session_id}_adjustment_stream.txt
+story_med/results/temp/{case_id}/story_adjustment_result.json
+```
+
 ## DeepEval / Confident AI
 
 统一入口 `story_med/tools/run_patient_story_deepeval.py` 内部会调用：

@@ -128,6 +128,27 @@ class ImageDesignMetric(_PatientStoryBaseMetric):
         return summary.get("image_design") or {}
 
 
+class StoryComplianceMetric(_PatientStoryBaseMetric):
+    """Story 合规审核指标。"""
+
+    @property
+    def __name__(self) -> str:
+        return "story_compliance_metric"
+
+    def _score(self, summary: Dict[str, Any]) -> float:
+        return float(_breakdown_score(summary, "story_compliance_score"))
+
+    def _success(self, summary: Dict[str, Any]) -> bool:
+        return bool(_audit_value(summary, "story_compliance_passed"))
+
+    def _reason(self, summary: Dict[str, Any]) -> str:
+        story_compliance = summary.get("story_compliance") or {}
+        return story_compliance.get("summary") or "Story 合规审核无结果。"
+
+    def _breakdown(self, summary: Dict[str, Any]) -> Dict[str, Any]:
+        return summary.get("story_compliance") or {}
+
+
 class ImageConsistencyMetric(_PatientStoryBaseMetric):
     """图片一致性审核指标。"""
 
@@ -231,6 +252,7 @@ def build_patient_story_metrics() -> List[BaseMetric]:
     return [
         OutlineFactMetric(),
         StoryFactMetric(),
+        StoryComplianceMetric(),
         ImageDesignMetric(),
         ImageConsistencyMetric(),
         ImageFactMetric(),

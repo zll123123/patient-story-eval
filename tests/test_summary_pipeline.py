@@ -53,6 +53,15 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
         },
     )
     _write_json(case_dir / "image_design_validation.json", {"is_passed": True, "summary": "ok", "issues": []})
+    _write_json(
+        case_dir / "story_compliance_validation.json",
+        {
+            "status": "success",
+            "is_passed": False,
+            "summary": "存在隐私泄露风险",
+            "issues": [{"issue_id": "privacy_leak"}],
+        },
+    )
     _write_json(case_dir / "image_consistant_validation.json", {"is_passed": False, "summary": "bad", "issues": [{"issue_id": "1"}]})
     _write_json(
         case_dir / "image_fact_validation.json",
@@ -89,12 +98,15 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
     assert result["audit_overview"] == {
         "outline_passed": False,
         "story_passed": True,
+        "story_compliance_passed": False,
         "image_design_passed": True,
         "image_consistant_passed": False,
         "image_fact_passed": False,
         "final_image_layout_passed": False,
     }
     assert result["all_passed"] is False
+    assert result["story_compliance"]["passed"] is False
+    assert result["story_compliance"]["issue_count"] == 1
     assert result["image_design"]["passed"] is True
     assert result["image_consistant"]["issue_count"] == 1
     assert result["image_fact"]["failed_illustration_ids"] == [1]
@@ -105,12 +117,13 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
     assert result["scorecard"]["breakdown"] == {
         "outline_fact_score": 10.0,
         "story_fact_score": 20.0,
+        "story_compliance_score": 5.0,
         "image_design_score": 10.0,
         "image_consistency_score": 0.0,
         "image_fact_score": 5.0,
-        "final_image_layout_score": 25.0,
+        "final_image_layout_score": 15.0,
     }
-    assert result["scorecard"]["total_score"] == 70.0
+    assert result["scorecard"]["total_score"] == 65.0
     assert result["agent_total_duration_seconds"] == 12.5
     assert result["agent_step_timings"]["generate_outline"]["duration_seconds"] == 1.1
     assert result["agent_step_timings"]["generate_story"]["duration_seconds"] == 2.2

@@ -63,6 +63,7 @@ def _build_payload(case_dir: Path, summary: Dict[str, Any], failed_audits: List[
     artifact_mapping = {
         "outline_passed": "outline_hard_rule_compare.json",
         "story_passed": "story_hard_rule_compare.json",
+        "story_compliance_passed": "story_compliance_validation.json",
         "image_design_passed": "image_design_validation.json",
         "image_consistant_passed": "image_consistant_validation.json",
         "image_fact_passed": "image_fact_validation.json",
@@ -97,10 +98,19 @@ def _load_intermediate_outputs(case_id: str, session_id: str) -> Dict[str, Any]:
         return {}
     asset_dir = RESULTS_DIR / "assets" / case_id / session_id
     output: Dict[str, Any] = {}
-    case_parse_path = asset_dir / "case_parse" / "case_parse.md"
-    outline_path = asset_dir / "generate_outline" / "generate_outline_1_outline.md"
-    story_path = asset_dir / "generate_story" / "generate_story_1_story.md"
-    image_design_path = asset_dir / "generate_images" / "generate_images_6_image_design.json"
+    case_parse_path = _first_existing_path(asset_dir, ["case_parse/case_parse.md"])
+    outline_path = _first_existing_path(
+        asset_dir,
+        ["generate_outline/outline.md", "generate_outline/generate_outline_1_outline.md"],
+    )
+    story_path = _first_existing_path(
+        asset_dir,
+        ["generate_story/story.md", "generate_story/generate_story_1_story.md"],
+    )
+    image_design_path = _first_existing_path(
+        asset_dir,
+        ["generate_images/image_design.json", "generate_images/generate_images_6_image_design.json"],
+    )
     if case_parse_path.exists():
         output["case_parse"] = case_parse_path.read_text(encoding="utf-8")
     if outline_path.exists():
@@ -110,6 +120,15 @@ def _load_intermediate_outputs(case_id: str, session_id: str) -> Dict[str, Any]:
     if image_design_path.exists():
         output["image_design"] = _read_json(image_design_path)
     return output
+
+
+def _first_existing_path(root_dir: Path, relative_paths: List[str]) -> Path:
+    """按候选顺序返回第一个存在的产物路径。"""
+    for relative_path in relative_paths:
+        candidate = root_dir / relative_path
+        if candidate.exists():
+            return candidate
+    return root_dir / relative_paths[0]
 
 
 def _skip_result(case_id: str) -> Dict[str, Any]:

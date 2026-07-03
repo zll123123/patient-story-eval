@@ -214,6 +214,9 @@ def _build_case_facts_summary(
 
 def _build_step_timings(run_result: StoryAgentRunResult) -> Dict[str, Any]:
     """提取核心生成步骤耗时。"""
+    internal_timings = _build_patient_case_internal_timings(run_result)
+    if internal_timings:
+        return internal_timings
     target_steps = {
         "generate_outline": "获取大纲",
         "generate_story": "获取故事",
@@ -232,6 +235,62 @@ def _build_step_timings(run_result: StoryAgentRunResult) -> Dict[str, Any]:
             "duration_seconds": step.duration_seconds,
         }
     return timings
+
+
+def _build_patient_case_internal_timings(run_result: StoryAgentRunResult) -> Dict[str, Any]:
+    """提取解析版患者病例 Agent 内部节点耗时。"""
+    for step in run_result.steps:
+        if step.step_name not in {"start_patient_case_task", "stream_agent_task"}:
+            continue
+        node_timings = step.response_body.get("agent_node_timings")
+        if not isinstance(node_timings, dict):
+            continue
+        raw_steps = node_timings.get("steps")
+        if not isinstance(raw_steps, list):
+            continue
+        timings = _normalize_patient_case_steps(raw_steps)
+        current_node = node_timings.get("current_node")
+        if isinstance(current_node, dict) and current_node:
+            timings["current_node"] = current_node
+        return timings
+    return {}
+
+
+def _normalize_patient_case_steps(raw_steps: List[Any]) -> Dict[str, Any]:
+    """将解析版 Agent 内部节点名称标准化。"""
+    timings: Dict[str, Any] = {}
+    for raw_step in raw_steps:
+        if not isinstance(raw_step, dict):
+            continue
+        title = str(raw_step.get("title") or "")
+        key, label = _patient_case_step_key(title)
+        if not key:
+            continue
+        timings[key] = {
+            "label": label,
+            "endpoint": "/api/agent/tasks/stream",
+            "agent_title": title,
+            "status": raw_step.get("status", ""),
+            "started_at": raw_step.get("started_at", ""),
+            "finished_at": raw_step.get("finished_at", ""),
+            "duration_seconds": raw_step.get("duration_seconds", 0.0),
+        }
+    return timings
+
+
+def _patient_case_step_key(title: str) -> tuple[str, str]:
+    """映射解析版 Agent 内部节点名称。"""
+    if "解析病例" in title:
+        return "case_parser", "病例解析"
+    if "大纲" in title:
+        return "generate_outline", "获取大纲"
+    if "故事正文" in title:
+        return "generate_story", "获取故事"
+    if "配图" in title:
+        return "generate_images", "生成图片"
+    if "html" in title.lower() or "页面" in title:
+        return "generate_final_image", "获取最终长图"
+    return "", ""
 
 
 def _load_existing_step_timings(case_id: str, session_id: str) -> Dict[str, Any]:

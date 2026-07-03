@@ -22,6 +22,7 @@ from story_med.services.hard_rule_llm_pipeline import (
 )
 from story_med.services.image_compare_pipeline import run_case_latest_image_compare
 from story_med.services.summary_pipeline import refresh_case_summary
+from story_med.services.story_compliance_pipeline import run_story_compliance_validation
 
 
 def run_selected_cases() -> List[Dict[str, Any]]:
@@ -84,7 +85,8 @@ def run_single_case(
     except Exception as exc:
         status = "failed"
         error = str(exc)
-        summary = _safe_refresh_summary(case.case_id)
+        summary = _build_failed_pipeline_summary(case.case_id, error)
+        _write_case_summary(case.case_id, summary)
     _write_case_output(case.case_id, {"mode": mode, "status": status, "error": error, "summary": summary})
     return {"case_id": case.case_id, "status": status, "summary": summary, "error": error}
 
@@ -115,6 +117,7 @@ def _run_audit_case(
 ) -> None:
     """执行单个 case 的图片审核和归因。"""
     run_case_latest_image_compare(vision_config, case)
+    run_story_compliance_validation(llm_config, case)
     refresh_case_summary(case.case_id)
     if run_attribution:
         run_case_audit_attribution(llm_config, case.case_id)
@@ -126,6 +129,48 @@ def _safe_refresh_summary(case_id: str) -> Dict[str, Any]:
         return refresh_case_summary(case_id)
     except Exception:
         return {"case_id": case_id}
+
+
+def _build_failed_pipeline_summary(case_id: str, error: str) -> Dict[str, Any]:
+    """构建生成链路失败时的 summary，避免误读旧审核结果。"""
+    overview_keys = [
+        "outline_passed",
+        "story_passed",
+        "story_compliance_passed",
+        "image_design_passed",
+        "image_consistant_passed",
+        "image_fact_passed",
+        "final_image_layout_passed",
+    ]
+    return {
+        "case_id": case_id,
+        "pipeline_success": False,
+        "pipeline_error": error,
+        "session_id": "",
+        "audit_overview": {key: False for key in overview_keys},
+        "scorecard": {
+            "total_score": 0.0,
+            "gate_passed": False,
+            "high_score_eligible": False,
+            "breakdown": {
+                "outline_fact_score": 0.0,
+                "story_fact_score": 0.0,
+                "story_compliance_score": 0.0,
+                "image_design_score": 0.0,
+                "image_consistency_score": 0.0,
+                "image_fact_score": 0.0,
+                "final_image_layout_score": 0.0,
+            },
+        },
+        "failure_reason": "生成链路失败，未执行后续审核。",
+    }
+
+
+def _write_case_summary(case_id: str, summary: Dict[str, Any]) -> None:
+    """写入单 case summary 文件。"""
+    output_dir = TMP_DIR / case_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _eval_mode() -> str:

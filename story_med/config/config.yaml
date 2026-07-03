@@ -4,6 +4,10 @@ verify_ssl: true
 accept: application/json
 user_agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36
 result_file: results/patient_story_run.json
+adjust_base_url: https://pharma-content-hub-java-dev.nullht.com
+adjust_origin: https://pharma-hub.nullht.com
+adjust_referer: https://pharma-hub.nullht.com/
+adjust_accept: text/event-stream;charset=UTF-8, text/event-stream
 deepeval:
   mode: full_pipeline
   include_visual_steps: true
