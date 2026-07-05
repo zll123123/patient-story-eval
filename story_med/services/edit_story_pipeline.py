@@ -17,7 +17,7 @@ from story_med.config.settings import ASSETS_DIR, EDIT_RESULTS_DIR, PROMPTS_DIR,
 from story_med.services.edit_story_config import get_edit_case
 from story_med.services.story_adjustment_pipeline import run_story_adjustment
 
-EDIT_COVERAGE_PROMPT_FILE = PROMPTS_DIR / "stoty_edit_complete.md"
+EDIT_COVERAGE_PROMPT_FILE = PROMPTS_DIR / "edit_coverage_validate.md"
 EDIT_COVERAGE_RESULT_FILE = "edit_coverage_validation.json"
 
 

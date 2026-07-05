@@ -1,0 +1,374 @@
+edit_dialogue_cases:
+  - case_id: EDG_001
+    ref_clinical_case_id: SM_001
+    summary: 新增公司声明后调整长图背景颜色。
+    turn_count: 2
+    turns:
+      - turn_id: 1
+        message: 在长图底部帮我加一句“由零假设科技有限公司生成”，别放得太抢眼。
+        intent:
+          type: add
+          targets:
+            - company_statement
+        involved_agents:
+          - html
+        evaluation_focus: 最终 HTML/长图底部或角落应新增“由零假设科技有限公司生成”声明，位置和样式应较弱化但可见。
+      - turn_id: 2
+        message: 背景颜色也顺手调一下吧，别用纯白，换成更柔和一点的米白色。
+        intent:
+          type: modify
+          targets:
+            - background_style
+        involved_agents:
+          - html
+        evaluation_focus: 最终 HTML/长图背景应由纯白调整为柔和米白或类似低饱和浅色背景，并在整体页面中生效。
+    coverage:
+      types:
+        - add
+        - modify
+      targets:
+        - company_statement
+        - background_style
+      agents:
+        - html
+
+  - case_id: EDG_002
+    ref_clinical_case_id: SM_002
+    summary: 调整图片细节并同步优化图片在长图中的展示占比。
+    turn_count: 2
+    turns:
+      - turn_id: 1
+        message: 图1里人物看起来有点僵，帮我把表情和动作改自然一些。
+        intent:
+          type: modify
+          targets:
+            - specific_image
+            - image_detail
+        involved_agents:
+          - image
+          - html
+        evaluation_focus: 应重新调整指定图片的局部画面细节，使人物表情和动作更自然；最终 HTML/长图应同步使用调整后的图片。
+      - turn_id: 2
+        message: 这张图在页面里占得有点大，展示尺寸稍微收一点就行。
+        intent:
+          type: modify
+          targets:
+            - image_layout
+        involved_agents:
+          - html
+        evaluation_focus: 最终 HTML/长图中该图片的展示占比或宽高应被适当缩小，图片内容本身不需要重生成。
+    coverage:
+      types:
+        - modify
+      targets:
+        - specific_image
+        - image_detail
+        - image_layout
+      agents:
+        - image
+        - html
+
+  - case_id: EDG_003
+    ref_clinical_case_id: SM_003
+    summary: 改为患者自述口吻并调整标题表达。
+    turn_count: 2
+    turns:
+      - turn_id: 1
+        message: 这版读起来太像医生在写病历了，能不能改成患者自己讲述的感觉？
+        intent:
+          type: rewrite
+          targets:
+            - narrative_perspective
+        involved_agents:
+          - story
+          - html
+        evaluation_focus: Story 文本应改为患者自述或更接近患者第一人称讲述的视角，最终 HTML/长图中的正文也应同步更新。
+      - turn_id: 2
+        message: 标题也别太硬，改得更像一个真实患者故事的标题。
+        intent:
+          type: modify
+          targets:
+            - title
+        involved_agents:
+          - story
+          - html
+        evaluation_focus: Story 标题或长图主标题应从偏病历式表达调整为更适合患者故事的标题，并在最终 HTML/长图中体现。
+    coverage:
+      types:
+        - rewrite
+        - modify
+      targets:
+        - narrative_perspective
+        - title
+      agents:
+        - story
+        - html
+
+  - case_id: EDG_004
+    ref_clinical_case_id: SM_004
+    summary: 补充随访信息并精炼结尾。
+    turn_count: 2
+    turns:
+      - turn_id: 1
+        message: 后面复查和随访那块说得太少了，帮我把这个过程补清楚一点。
+        intent:
+          type: add
+          targets:
+            - follow_up
+        involved_agents:
+          - outline
+          - story
+          - html
+        evaluation_focus: 大纲和 Story 应补充复查、随访或长期监测相关内容，最终 HTML/长图应同步展示补充后的随访信息。
+      - turn_id: 2
+        message: 最后一段有点啰嗦，收得更干净一点。
+        intent:
+          type: modify
+          targets:
+            - ending
+        involved_agents:
+          - story
+          - html
+        evaluation_focus: Story 结尾应被精简或重写为更简洁的收尾表达，最终 HTML/长图中的结尾段落应同步更新。
+    coverage:
+      types:
+        - add
+        - modify
+      targets:
+        - follow_up
+        - ending
+      agents:
+        - outline
+        - story
+        - html
+
+  - case_id: EDG_005
+    ref_clinical_case_id: SM_005
+    summary: 纠正治疗细节并优化语言风格。
+    turn_count: 2
+    turns:
+      - turn_id: 1
+        message: 治疗周期和用药剂量那里帮我再核一下，写得不准确的地方改准。
+        intent:
+          type: correct
+          targets:
+            - treatment_detail
+        involved_agents:
+          - outline
+          - story
+          - html
+        evaluation_focus: 大纲、Story 和最终 HTML/长图中的治疗周期、药物名称或剂量等治疗细节应被纠正为准确表达。
+      - turn_id: 2
+        message: 文字风格再克制一点，别像宣传稿。
+        intent:
+          type: rewrite
+          targets:
+            - language_style
+        involved_agents:
+          - story
+          - html
+        evaluation_focus: Story 文本应调整为更克制、专业的表达风格，最终 HTML/长图中的正文应同步体现该文风变化。
+    coverage:
+      types:
+        - correct
+        - rewrite
+      targets:
+        - treatment_detail
+        - language_style
+      agents:
+        - outline
+        - story
+        - html
+
+  - case_id: EDG_006
+    ref_clinical_case_id: SM_006
+    summary: 删除合规说明并调整整体页面布局。
+    turn_count: 2
+    turns:
+      - turn_id: 1
+        message: 底部那个合规说明先去掉，这版不用展示。
+        intent:
+          type: remove
+          targets:
+            - compliance_statement
+        involved_agents:
+          - html
+        evaluation_focus: 最终 HTML/长图底部或相关位置的合规说明、风险提示或免责声明应被删除。
+      - turn_id: 2
+        message: 页面排版再紧凑一点，重点信息别分得太散。
+        intent:
+          type: modify
+          targets:
+            - layout
+        involved_agents:
+          - html
+        evaluation_focus: 最终 HTML/长图整体布局应更紧凑，重点信息模块的距离和层级应更集中、更易读。
+    coverage:
+      types:
+        - remove
+        - modify
+      targets:
+        - compliance_statement
+        - layout
+      agents:
+        - html
+
+  - case_id: EDG_007
+    ref_clinical_case_id: SM_007
+    summary: 修改图片比例后调整图片局部内容。
+    turn_count: 2
+    turns:
+      - turn_id: 1
+        message: 生成图2的比例不太适合长图，帮我改成更适合竖版展示的尺寸。
+        intent:
+          type: modify
+          targets:
+            - specific_image
+            - image_size
+        involved_agents:
+          - image
+          - html
+        evaluation_focus: 指定图片应重新调整为更适合竖版长图展示的尺寸或比例，最终 HTML/长图应同步使用新尺寸图片。
+      - turn_id: 2
+        message: 画面里的医疗场景再真实一点，别太像摆拍。
+        intent:
+          type: modify
+          targets:
+            - image_detail
+        involved_agents:
+          - image
+          - html
+        evaluation_focus: 图片中的医疗场景细节应更自然真实，降低摆拍感；最终 HTML/长图应同步展示调整后的图片。
+    coverage:
+      types:
+        - modify
+      targets:
+        - specific_image
+        - image_size
+        - image_detail
+      agents:
+        - image
+        - html
+
+  - case_id: EDG_008
+    ref_clinical_case_id: SM_008
+    summary: 补充家庭支持内容后调整正文语言。
+    turn_count: 2
+    turns:
+      - turn_id: 1
+        message: 故事里可以加一点家属陪伴和照护的内容，让人物没那么单薄。
+        intent:
+          type: add
+          targets:
+            - family_background
+        involved_agents:
+          - story
+          - html
+        evaluation_focus: Story 应新增家庭成员陪伴、照护或支持相关内容，最终 HTML/长图中的故事正文应同步展示新增内容。
+      - turn_id: 2
+        message: 但整体语气别太煽情，还是保持温和克制。
+        intent:
+          type: rewrite
+          targets:
+            - language_style
+        involved_agents:
+          - story
+          - html
+        evaluation_focus: Story 新增和原有文本的整体语气应调整为温和克制，最终 HTML/长图正文应同步体现该语言风格。
+    coverage:
+      types:
+        - add
+        - rewrite
+      targets:
+        - family_background
+        - language_style
+      agents:
+        - story
+        - html
+
+  - case_id: EDG_009
+    ref_clinical_case_id: SM_009
+    summary: 调整背景和标题以降低营销感。
+    turn_count: 3
+    turns:
+      - turn_id: 1
+        message: 这个长图背景颜色太亮了，换成低饱和一点的浅灰蓝吧。
+        intent:
+          type: modify
+          targets:
+            - background_style
+        involved_agents:
+          - html
+        evaluation_focus: 最终 HTML/长图背景应调整为低饱和浅灰蓝或类似冷静色调，并在页面整体背景中生效。
+      - turn_id: 2
+        message: 标题也收一下，不要有太强的营销感。
+        intent:
+          type: modify
+          targets:
+            - title
+        involved_agents:
+          - story
+          - html
+        evaluation_focus: Story 标题或长图主标题应调整为更克制、非营销化的表达，并在最终 HTML/长图中同步体现。
+      - turn_id: 3
+        message: 整体文字也更像真实病例分享一点。
+        intent:
+          type: rewrite
+          targets:
+            - language_style
+        involved_agents:
+          - story
+          - html
+        evaluation_focus: Story 正文语言应更接近真实病例分享，减少宣传化表达；最终 HTML/长图正文应同步更新。
+    coverage:
+      types:
+        - modify
+        - rewrite
+      targets:
+        - background_style
+        - title
+        - language_style
+      agents:
+        - html
+        - story
+
+  - case_id: EDG_010
+    ref_clinical_case_id: SM_010
+    summary: 修改指定图片并补充治疗节点。
+    turn_count: 2
+    turns:
+      - turn_id: 1
+        message: 第三张图里的患者状态看起来不太符合场景，帮我调得更贴近真实就诊状态。
+        intent:
+          type: modify
+          targets:
+            - specific_image
+            - image_detail
+        involved_agents:
+          - image
+          - html
+        evaluation_focus: 指定第三张图片的人物状态和场景细节应更贴近真实就诊或治疗场景，最终 HTML/长图应同步替换为调整后的图片。
+      - turn_id: 2
+        message: 治疗节点那里再补一下，别只写一个笼统治疗。
+        intent:
+          type: add
+          targets:
+            - treatment_detail
+        involved_agents:
+          - outline
+          - story
+          - html
+        evaluation_focus: 大纲、Story 和最终 HTML/长图应补充更明确的治疗节点或治疗阶段信息，避免只保留笼统治疗描述。
+    coverage:
+      types:
+        - modify
+        - add
+      targets:
+        - specific_image
+        - image_detail
+        - treatment_detail
+      agents:
+        - image
+        - html
+        - outline
+        - story
