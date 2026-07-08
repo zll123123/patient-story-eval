@@ -127,6 +127,7 @@ edit_dialogue_cases:
           targets:
             - ending
         involved_agents:
+          - outline
           - story
           - html
         evaluation_focus: Story 结尾应被精简或重写为更简洁的收尾表达，最终 HTML/长图中的结尾段落应同步更新。
@@ -154,7 +155,6 @@ edit_dialogue_cases:
           targets:
             - treatment_detail
         involved_agents:
-          - outline
           - story
           - html
         evaluation_focus: 大纲、Story 和最终 HTML/长图中的治疗周期、药物名称或剂量等治疗细节应被纠正为准确表达。

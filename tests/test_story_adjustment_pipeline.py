@@ -23,7 +23,10 @@ class FakeResponse:
 
     def iter_content(self, chunk_size: int, decode_unicode: bool) -> list[str]:
         """返回模拟 SSE 分块。"""
-        return ["data: {\"status\":\"running\"}\n\n", "data: {\"status\":\"done\"}\n\n"]
+        return [
+            "data: {\"message_type\":\"TASK_RUNNING\"}\n\n",
+            "data: {\"message_type\":\"TASK_COMPLETED\"}\n\n",
+        ]
 
     def json(self) -> Dict[str, Any]:
         """返回模拟 JSON。"""
@@ -120,6 +123,8 @@ def test_run_story_adjustment_writes_stream_and_summary(
 ) -> None:
     """验证调整节点会保存 SSE 原始流和摘要结果。"""
     monkeypatch.setattr(pipeline, "EDIT_RESULTS_DIR", tmp_path / "edit")
+    called = {}
+    monkeypatch.setattr(pipeline, "clear_edit_case_artifacts", lambda case_id: called.setdefault("case_id", case_id))
     fake_session = FakeSession()
 
     result = pipeline.run_story_adjustment(
@@ -132,9 +137,11 @@ def test_run_story_adjustment_writes_stream_and_summary(
     )
 
     assert result["success"] is True
+    assert result["has_task_completed"] is True
     assert result["response_body"]["event_count"] == 2
     assert fake_session.request["url"] == "https://adjust.example.com/api/agent/tasks/stream"
     assert fake_session.request["json"]["form"]["message"] == "图片风格调整的更写实一点"
+    assert called["case_id"] == "SM_001"
     assert (tmp_path / "edit/SM_001/session-1_adjustment_stream.txt").exists()
     assert (tmp_path / "edit/SM_001/story_adjustment_result.json").exists()
 
@@ -165,3 +172,56 @@ def test_extract_stream_errors_collects_outer_task_failed(tmp_path: Path) -> Non
     errors = pipeline.extract_stream_errors(stream_path)
 
     assert errors == ["EOF reached while reading"]
+
+
+def test_detect_task_completed_returns_true_when_completed_event_exists(tmp_path: Path) -> None:
+    """验证命中 TASK_COMPLETED 时返回 True。"""
+    stream_path = tmp_path / "stream.txt"
+    stream_path.write_text(
+        'data: {"message_type":"TASK_RUNNING"}\n'
+        'data: {"message_type":"TASK_COMPLETED"}\n',
+        encoding="utf-8",
+    )
+
+    assert pipeline.detect_task_completed(stream_path) is True
+
+
+def test_run_story_adjustment_fails_without_task_completed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """验证未命中 TASK_COMPLETED 时不应判定成功。"""
+    monkeypatch.setattr(pipeline, "EDIT_RESULTS_DIR", tmp_path / "edit")
+    monkeypatch.setattr(pipeline, "clear_edit_case_artifacts", lambda _case_id: None)
+
+    class NoCompleteResponse(FakeResponse):
+        def iter_content(self, chunk_size: int, decode_unicode: bool) -> list[str]:
+            return ["data: {\"message_type\":\"TASK_RUNNING\"}\n\n"]
+
+    class NoCompleteSession(FakeSession):
+        def post(self, url: str, **kwargs: Any) -> FakeResponse:
+            self.request = {"url": url, **kwargs}
+            if url.endswith("/api/auth/login"):
+                return FakeResponse(
+                    {
+                        "success": True,
+                        "data": {
+                            "token_type": "Bearer",
+                            "access_token": "new-token",
+                        },
+                    }
+                )
+            return NoCompleteResponse()
+
+    result = pipeline.run_story_adjustment(
+        config=build_config(),
+        case_id="SM_001",
+        session_id="session-1",
+        task_id="task-1",
+        message="图片风格调整的更写实一点",
+        session=NoCompleteSession(),
+    )
+
+    assert result["has_task_completed"] is False
+    assert result["success"] is False
+    assert result["downloaded_assets"] == []

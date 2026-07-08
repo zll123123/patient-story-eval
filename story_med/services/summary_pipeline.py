@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-from story_med.config.settings import TMP_DIR
+from story_med.config.settings import RESULTS_DIR, TMP_DIR
 
 OUTLINE_FACT_MAX_SCORE = 20.0
 STORY_FACT_MAX_SCORE = 20.0
@@ -119,10 +119,12 @@ def _merge_image_summary(case_dir: Path, summary: Dict[str, Any], audit_overview
         image_design = _read_json(image_design_path)
         issue_ids = _collect_issue_ids(image_design)
         audit_overview["image_design_passed"] = bool(image_design.get("is_passed"))
+        total_count = _load_image_design_total_count(summary)
         summary["image_design"] = {
             "passed": bool(image_design.get("is_passed")),
             "issue_count": len(image_design.get("issues") or []),
             "issue_ids": issue_ids,
+            "total_count": total_count,
             "summary": image_design.get("summary", ""),
         }
 
@@ -276,11 +278,10 @@ def _image_design_score(summary: Dict[str, Any]) -> float:
     Returns:
         图片设计得分。
     """
-    image_fact = summary.get("image_fact") or {}
-    total_count = int(image_fact.get("total_count") or 0)
+    image_design = summary.get("image_design") or {}
+    total_count = int(image_design.get("total_count") or 0)
     if total_count <= 0:
         return 0.0
-    image_design = summary.get("image_design") or {}
     if bool(image_design.get("passed")):
         return IMAGE_DESIGN_MAX_SCORE
     failed_count = _failed_image_count_from_issue_ids(image_design.get("issue_ids") or [], total_count)
@@ -439,12 +440,36 @@ def _failed_image_count_from_issue_ids(issue_ids: List[Any], total_count: int) -
     """
     image_ids = set()
     for issue_id in issue_ids:
-        match = re.search(r"图\s*(\d+)", str(issue_id))
-        if match:
-            image_ids.add(match.group(1))
+        for match in re.findall(r"图\s*(\d+)", str(issue_id)):
+            image_ids.add(match)
     if image_ids:
         return len(image_ids)
     return total_count
+
+
+def _load_image_design_total_count(summary: Dict[str, Any]) -> int:
+    """从图片设计源文件读取总图片数。
+
+    Args:
+        summary: 当前汇总对象。
+
+    Returns:
+        设计图总张数；读取失败时返回 0。
+    """
+    case_id = str(summary.get("case_id") or "").strip()
+    session_id = str(summary.get("session_id") or "").strip()
+    if not case_id or not session_id:
+        return 0
+    generate_images_dir = RESULTS_DIR / "assets" / case_id / session_id / "generate_images"
+    design_files = sorted(generate_images_dir.glob("*image_design.json"))
+    if len(design_files) != 1:
+        return 0
+    try:
+        image_design = _read_json(design_files[0])
+    except (json.JSONDecodeError, OSError):
+        return 0
+    illustrations = image_design.get("illustrations")
+    return len(illustrations) if isinstance(illustrations, list) else 0
 
 
 def _collect_issue_ids(result: Dict[str, Any]) -> List[str]:

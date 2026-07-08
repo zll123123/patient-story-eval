@@ -15,11 +15,11 @@ class FakeLlmConfig:
     """模拟 LLM 配置对象。"""
 
 
-def test_evaluate_edit_coverage_uses_html_only_when_required(
+def test_evaluate_edit_coverage_uses_final_html_only(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """验证仅涉及 html 时只审核 html 节点产物。"""
+    """验证编辑审核只基于最终长图 HTML。"""
     monkeypatch.setattr(pipeline, "ASSETS_DIR", tmp_path / "assets")
     monkeypatch.setattr(pipeline, "EDIT_COVERAGE_PROMPT_FILE", _write_prompt(tmp_path))
     _write_text(tmp_path / "assets/SM_001/session-1/generate_final_image/index.html", "old html")
@@ -54,17 +54,14 @@ def test_evaluate_edit_coverage_uses_html_only_when_required(
     }
     assert len(result["node_results"]) == 1
     assert "new html with company" in calls[0]
-    assert "-old html" in calls[0]
-    assert "+new html with company" in calls[0]
-    assert "-old html" in result["node_results"][0]["content_diff"]
-    assert "+new html with company" in result["node_results"][0]["content_diff"]
+    assert "old html" not in calls[0]
 
 
-def test_evaluate_edit_coverage_fails_when_required_node_missing(
+def test_evaluate_edit_coverage_ignores_non_html_artifacts_in_pass_fail(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """验证缺少要求节点产物时修改覆盖失败。"""
+    """验证非长图产物即使存在，也不参与编辑通过判定。"""
     monkeypatch.setattr(pipeline, "ASSETS_DIR", tmp_path / "assets")
     monkeypatch.setattr(pipeline, "EDIT_COVERAGE_PROMPT_FILE", _write_prompt(tmp_path))
     story_path = tmp_path / "assets/EC_001/session-1/adjustment/story.md"
@@ -87,22 +84,22 @@ def test_evaluate_edit_coverage_fails_when_required_node_missing(
     )
 
     assert result["passed"] is False
-    assert result["score"] == 4.5
+    assert result["score"] == 0
     assert result["artifact_coverage"] == {
         "passed": False,
-        "present_nodes": ["story"],
+        "present_nodes": [],
         "missing_nodes": ["html"],
     }
-    assert result["node_results"][1]["node"] == "html"
-    assert result["node_results"][1]["artifact_present"] is False
-    assert result["node_results"][1]["score"] == 0
+    assert result["node_results"][0]["node"] == "html"
+    assert result["node_results"][0]["artifact_present"] is False
+    assert result["node_results"][0]["score"] == 0
 
 
-def test_evaluate_edit_coverage_fails_when_artifact_unchanged(
+def test_evaluate_edit_coverage_can_pass_when_artifact_is_unchanged(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """验证产物存在但未变化时直接判定修改未覆盖。"""
+    """验证最终长图即使未变化，也允许直接基于最终状态做判断。"""
     monkeypatch.setattr(pipeline, "ASSETS_DIR", tmp_path / "assets")
     monkeypatch.setattr(pipeline, "EDIT_COVERAGE_PROMPT_FILE", _write_prompt(tmp_path))
     _write_text(tmp_path / "assets/SM_001/session-1/generate_final_image/index.html", "same html")
@@ -111,10 +108,11 @@ def test_evaluate_edit_coverage_fails_when_artifact_unchanged(
     edit_case = _edit_case(["html"])
     adjustment_result = {"downloaded_assets": [{"type": "html", "local_path": str(html_path)}]}
 
-    def fail_if_called(_config: Any, _prompt: str) -> str:
-        raise AssertionError("产物未变化时不应调用模型审核")
-
-    monkeypatch.setattr(pipeline, "call_llm_text", fail_if_called)
+    monkeypatch.setattr(
+        pipeline,
+        "call_llm_text",
+        lambda _config, _prompt: "Score: 9\nPass: true\nOverall_Reason: html ok\nEvidence: same html",
+    )
 
     result = pipeline.evaluate_edit_coverage(
         FakeLlmConfig(),
@@ -125,10 +123,9 @@ def test_evaluate_edit_coverage_fails_when_artifact_unchanged(
         "",
     )
 
-    assert result["passed"] is False
+    assert result["passed"] is True
     assert result["artifact_coverage"]["passed"] is True
-    assert result["node_results"][0]["changed"] is False
-    assert result["node_results"][0]["score"] == 0
+    assert result["node_results"][0]["score"] == 9
 
 
 def test_resolve_reference_artifact_session_id_uses_latest_original_case_session(
@@ -219,6 +216,48 @@ def test_write_edit_validation_result_uses_coverage_filename(
     assert (tmp_path / "edit/EC_001/edit_coverage_validation.json").exists()
 
 
+def test_finalize_edit_story_case_writes_coverage_result(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """验证已完成调整后会补做覆盖评估并落盘。"""
+    monkeypatch.setattr(pipeline, "ASSETS_DIR", tmp_path / "assets")
+    monkeypatch.setattr(pipeline, "EDIT_RESULTS_DIR", tmp_path / "edit")
+    monkeypatch.setattr(pipeline, "EDIT_COVERAGE_PROMPT_FILE", _write_prompt(tmp_path))
+    _write_text(tmp_path / "assets/SM_001/session-1/generate_final_image/index.html", "old html")
+    html_path = tmp_path / "assets/EDG_001_T01/session-1/adjustment/index.html"
+    _write_text(html_path, "new html")
+    monkeypatch.setattr(
+        pipeline,
+        "call_llm_text",
+        lambda _config, _prompt: "Score: 9\nPass: true\nReason: ok\nEvidence: html changed",
+    )
+    edit_case = _edit_case(["html"])
+    edit_case.update(
+        {
+            "case_id": "EDG_001_T01",
+            "ref_clinical_case_id": "SM_001",
+            "message": "调整 html",
+        }
+    )
+    adjustment_result = {
+        "success": True,
+        "downloaded_assets": [{"type": "html", "local_path": str(html_path)}],
+    }
+
+    result = pipeline.finalize_edit_story_case(
+        FakeLlmConfig(),
+        edit_case,
+        "session-1",
+        "task-1",
+        adjustment_result,
+    )
+
+    assert result["edit_coverage_validation"]["passed"] is True
+    output_path = tmp_path / "edit/EDG_001_T01/edit_coverage_validation.json"
+    assert output_path.exists()
+
+
 def test_build_content_diff_marks_before_and_after() -> None:
     """验证修改差异会明确标记删除和新增内容。"""
     result = pipeline.build_content_diff("原文A\n保留", "原文B\n保留")
@@ -245,7 +284,7 @@ def _write_prompt(tmp_path: Path) -> Path:
     prompt_path = tmp_path / "prompt.md"
     _write_text(
         prompt_path,
-        "{{message}}\n{{evaluation_focus}}\n{{content_diff}}\n{{input_content}}\n{{output_content}}",
+        "{{message}}\n{{evaluation_focus}}\n{{image_input}}",
     )
     return prompt_path
 

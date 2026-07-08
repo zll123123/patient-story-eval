@@ -55,11 +55,58 @@ def run_edit_story_case(
         task_id=ref_context["task_id"],
         message=edit_case["message"],
     )
-    if not adjustment_result.get("success"):
-        result = _build_failed_edit_result(edit_case, ref_context, reference_session_id, adjustment_result)
+    return finalize_edit_story_case(
+        llm_config=llm_config,
+        edit_case=edit_case,
+        session_id=ref_context["session_id"],
+        task_id=ref_context["task_id"],
+        adjustment_result=adjustment_result,
+    )
+
+
+def finalize_edit_story_case(
+    llm_config: StoryMedLlmConfig,
+    edit_case: Dict[str, Any],
+    session_id: str,
+    task_id: str,
+    adjustment_result: Dict[str, Any],
+) -> Dict[str, Any]:
+    """基于已执行的编辑结果补充覆盖评估并落盘。
+
+    Args:
+        llm_config: LLM 运行配置。
+        edit_case: 编辑测试用例。
+        session_id: 编辑基线会话 ID。
+        task_id: 内容中台任务 ID。
+        adjustment_result: 已完成的调整节点结果。
+
+    Returns:
+        包含编辑覆盖审核结果的完整输出。
+    """
+    reference_session_id = resolve_reference_artifact_session_id(
+        edit_case["ref_clinical_case_id"],
+        session_id,
+    )
+    try:
+        input_content = read_reference_content(edit_case["ref_clinical_case_id"], reference_session_id)
+    except Exception as exc:
+        result = _build_preflight_failed_edit_result(edit_case, str(exc))
+        result["session_id"] = session_id
+        result["task_id"] = task_id
+        result["reference_session_id"] = reference_session_id
+        result["adjustment_result"] = adjustment_result
         _write_edit_validation_result(edit_case["case_id"], result)
         return result
-    output_content = read_adjusted_content(edit_case["case_id"], ref_context["session_id"], adjustment_result)
+    if not adjustment_result.get("success"):
+        result = _build_failed_edit_result(
+            edit_case,
+            {"session_id": session_id, "task_id": task_id},
+            reference_session_id,
+            adjustment_result,
+        )
+        _write_edit_validation_result(edit_case["case_id"], result)
+        return result
+    output_content = read_adjusted_content(edit_case["case_id"], session_id, adjustment_result)
     validation = evaluate_edit_coverage(
         llm_config,
         edit_case,
@@ -71,9 +118,9 @@ def run_edit_story_case(
     result = {
         "case_id": edit_case["case_id"],
         "ref_clinical_case_id": edit_case["ref_clinical_case_id"],
-        "session_id": ref_context["session_id"],
+        "session_id": session_id,
         "reference_session_id": reference_session_id,
-        "task_id": ref_context["task_id"],
+        "task_id": task_id,
         "message": edit_case["message"],
         "adjustment_result": adjustment_result,
         "edit_coverage_validation": validation,
@@ -160,7 +207,11 @@ def read_adjusted_content(edit_case_id: str, session_id: str, adjustment_result:
     """
     for asset in adjustment_result.get("downloaded_assets") or []:
         local_path = Path(str(asset.get("local_path") or ""))
-        if local_path.suffix.lower() in {".html", ".md", ".json"} and local_path.exists():
+        if local_path.suffix.lower() == ".html" and local_path.exists():
+            return local_path.read_text(encoding="utf-8")
+    for asset in adjustment_result.get("downloaded_assets") or []:
+        local_path = Path(str(asset.get("local_path") or ""))
+        if local_path.suffix.lower() in {".md", ".json"} and local_path.exists():
             return local_path.read_text(encoding="utf-8")
     return _read_first_existing([ASSETS_DIR / edit_case_id / session_id / "adjustment" / "index.html"], required=False)
 
@@ -182,11 +233,10 @@ def evaluate_edit_coverage_result(
     Returns:
         修改覆盖审核结果。
     """
-    content_diff = build_content_diff(input_content, output_content)
-    prompt = build_edit_coverage_prompt(edit_case, input_content, output_content, content_diff)
+    prompt = build_edit_coverage_prompt(edit_case, input_content, output_content)
     raw_result = call_llm_text(llm_config, prompt)
     parsed = parse_edit_coverage_result(raw_result)
-    return {"raw_result": raw_result, "content_diff": content_diff, **parsed}
+    return {"raw_result": raw_result, **parsed}
 
 
 def evaluate_edit_coverage(
@@ -197,7 +247,7 @@ def evaluate_edit_coverage(
     fallback_input_content: str,
     fallback_output_content: str,
 ) -> Dict[str, Any]:
-    """按涉及节点审核编辑修改覆盖情况。
+    """只基于最终长图审核编辑修改覆盖情况。
 
     Args:
         llm_config: LLM 运行配置。
@@ -208,107 +258,71 @@ def evaluate_edit_coverage(
         fallback_output_content: 兜底修改后内容。
 
     Returns:
-        修改覆盖聚合审核结果。
+        修改覆盖审核结果。
     """
-    required_nodes = _required_edit_nodes(edit_case)
-    node_results = [
-        evaluate_edit_node_coverage(
-            llm_config,
-            edit_case,
-            node,
-            session_id,
-            adjustment_result,
-            fallback_input_content,
-            fallback_output_content,
-        )
-        for node in required_nodes
-    ]
-    artifact_coverage = build_artifact_coverage(node_results)
-    passed = artifact_coverage["passed"] and all(item.get("passed") is True for item in node_results)
-    score = round(sum(int(item.get("score") or 0) for item in node_results) / max(len(node_results), 1), 2)
-    return {
-        "metric_name": "修改覆盖",
-        "score": score,
-        "passed": passed,
-        "required_nodes": required_nodes,
-        "artifact_coverage": artifact_coverage,
-        "node_results": node_results,
-        "reason": _join_node_field(node_results, "reason"),
-        "evidence": _join_node_field(node_results, "evidence"),
-    }
-
-
-def evaluate_edit_node_coverage(
-    llm_config: StoryMedLlmConfig,
-    edit_case: Dict[str, Any],
-    node: str,
-    session_id: str,
-    adjustment_result: Dict[str, Any],
-    fallback_input_content: str,
-    fallback_output_content: str,
-) -> Dict[str, Any]:
-    """审核单个涉及节点的编辑完成情况。"""
-    node_input = read_reference_node_content(edit_case["ref_clinical_case_id"], session_id, node)
-    node_output = read_adjusted_node_content(edit_case["case_id"], session_id, adjustment_result, node)
-    changed = bool(node_input.strip()) and node_input.strip() != node_output.strip()
-    if not node_output.strip():
+    output_content = read_adjusted_long_image_content(edit_case["case_id"], session_id, adjustment_result)
+    if not output_content.strip():
         return {
-            "node": node,
-            "artifact_present": False,
-            "changed": False,
+            "metric_name": "修改覆盖",
             "score": 0,
             "passed": False,
-            "reason": f"未找到 {node} 节点的修改后产物，无法证明修改已覆盖。",
+            "required_nodes": ["html"],
+            "artifact_coverage": {
+                "passed": False,
+                "present_nodes": [],
+                "missing_nodes": ["html"],
+            },
+            "node_results": [
+                {
+                    "node": "html",
+                    "artifact_present": False,
+                    "score": 0,
+                    "passed": False,
+                    "reason": "未找到最终长图产物，无法进行编辑覆盖审核。",
+                    "evidence": "",
+                }
+            ],
+            "reason": "未找到最终长图产物，无法进行编辑覆盖审核。",
             "evidence": "",
         }
-    if node_input.strip() and not changed:
-        return {
-            "node": node,
-            "artifact_present": True,
-            "changed": False,
-            "score": 0,
-            "passed": False,
-            "reason": f"{node} 节点产物存在，但修改前后内容完全一致，未发生可验证的修改。",
-            "evidence": "",
-        }
-    content_diff = build_content_diff(
-        node_input or fallback_input_content,
-        node_output or fallback_output_content,
-    )
-    prompt = build_edit_coverage_prompt(
+    parsed = evaluate_edit_coverage_result(
+        llm_config,
         edit_case,
-        node_input or fallback_input_content,
-        node_output or fallback_output_content,
-        content_diff,
+        fallback_input_content,
+        output_content or fallback_output_content,
     )
-    raw_result = call_llm_text(llm_config, prompt)
-    parsed = parse_edit_coverage_result(raw_result)
-    return {
-        "node": node,
+    node_result = {
+        "node": "html",
         "artifact_present": True,
-        "changed": changed,
-        "content_diff": content_diff,
-        "raw_result": raw_result,
         **parsed,
     }
-
-
-def build_artifact_coverage(node_results: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """构建 involved_agent 对应产物覆盖结果。
-
-    Args:
-        node_results: 节点级审核结果列表。
-
-    Returns:
-        产物覆盖校验结果。
-    """
-    present_nodes = [str(item.get("node")) for item in node_results if item.get("artifact_present") is True]
-    missing_nodes = [str(item.get("node")) for item in node_results if item.get("artifact_present") is not True]
     return {
-        "passed": not missing_nodes,
-        "present_nodes": present_nodes,
-        "missing_nodes": missing_nodes,
+        "metric_name": "修改覆盖",
+        "score": parsed.get("score", 0),
+        "passed": bool(parsed.get("passed")),
+        "required_nodes": ["html"],
+        "artifact_coverage": {
+            "passed": True,
+            "present_nodes": ["html"],
+            "missing_nodes": [],
+        },
+        "node_results": [node_result],
+        "reason": parsed.get("reason", ""),
+        "evidence": parsed.get("evidence", ""),
     }
+
+
+def read_adjusted_long_image_content(
+    edit_case_id: str,
+    session_id: str,
+    adjustment_result: Dict[str, Any],
+) -> str:
+    """读取修改后的最终长图内容。"""
+    for asset in adjustment_result.get("downloaded_assets") or []:
+        local_path = Path(str(asset.get("local_path") or ""))
+        if local_path.suffix.lower() == ".html" and local_path.exists():
+            return local_path.read_text(encoding="utf-8")
+    return _read_first_existing([ASSETS_DIR / edit_case_id / session_id / "adjustment" / "index.html"], required=False)
 
 
 def read_reference_node_content(ref_case_id: str, session_id: str, node: str) -> str:
@@ -337,9 +351,11 @@ def build_edit_coverage_prompt(
 ) -> str:
     """构建修改覆盖审核提示词。"""
     template = EDIT_COVERAGE_PROMPT_FILE.read_text(encoding="utf-8")
+    evaluation_focus = edit_case.get("evaluation_focus")
     replacements = {
         "{{message}}": str(edit_case.get("message") or ""),
-        "{{evaluation_focus}}": str(edit_case.get("evaluation_focus") or ""),
+        "{{evaluation_focus}}": _format_evaluation_focus(evaluation_focus),
+        "{{image_input}}": _truncate(output_content, 12000),
         "{{content_diff}}": _truncate(content_diff or build_content_diff(input_content, output_content), 12000),
         "{{input_content}}": _truncate(input_content, 12000),
         "{{output_content}}": _truncate(output_content, 12000),
@@ -347,6 +363,13 @@ def build_edit_coverage_prompt(
     for placeholder, value in replacements.items():
         template = template.replace(placeholder, value)
     return template
+
+
+def _format_evaluation_focus(evaluation_focus: Any) -> str:
+    """格式化评估点，供提示词消费。"""
+    if isinstance(evaluation_focus, (list, dict)):
+        return json.dumps(evaluation_focus, ensure_ascii=False, indent=2)
+    return str(evaluation_focus or "")
 
 
 def build_content_diff(input_content: str, output_content: str, max_chars: int = 12000) -> str:
@@ -378,11 +401,13 @@ def parse_edit_coverage_result(raw_result: str) -> Dict[str, Any]:
     score_match = re.search(r"Score:\s*(\d+)", raw_result, re.IGNORECASE)
     pass_match = re.search(r"Pass:\s*(true|false)", raw_result, re.IGNORECASE)
     score = int(score_match.group(1)) if score_match else 0
+    reason = _extract_line_value(raw_result, "Reason") or _extract_line_value(raw_result, "Overall_Reason")
+    evidence = _extract_line_value(raw_result, "Evidence")
     return {
         "score": score,
         "passed": pass_match.group(1).lower() == "true" if pass_match else score >= 8,
-        "reason": _extract_line_value(raw_result, "Reason"),
-        "evidence": _extract_line_value(raw_result, "Evidence"),
+        "reason": reason,
+        "evidence": evidence,
     }
 
 

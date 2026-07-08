@@ -91,8 +91,20 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
             ],
         },
     )
+    generate_images_dir = tmp_path / "assets" / "SM_TEST" / "session-1" / "generate_images"
+    generate_images_dir.mkdir(parents=True, exist_ok=True)
+    _write_json(
+        generate_images_dir / "generate_images_6_image_design.json",
+        {
+            "illustrations": [
+                {"id": 1},
+                {"id": 2},
+            ]
+        },
+    )
 
     pipeline.TMP_DIR = case_dir.parent  # type: ignore[assignment]
+    pipeline.RESULTS_DIR = tmp_path  # type: ignore[assignment]
     result = pipeline.refresh_case_summary("SM_TEST")
 
     assert result["audit_overview"] == {
@@ -108,6 +120,7 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
     assert result["story_compliance"]["passed"] is False
     assert result["story_compliance"]["issue_count"] == 1
     assert result["image_design"]["passed"] is True
+    assert result["image_design"]["total_count"] == 2
     assert result["image_consistant"]["issue_count"] == 1
     assert result["image_fact"]["failed_illustration_ids"] == [1]
     assert result["final_image_layout"]["issue_count"] == 1
@@ -129,6 +142,63 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
     assert result["agent_step_timings"]["generate_story"]["duration_seconds"] == 2.2
     assert "outline_passed" not in result
     assert "story_passed" not in result
+
+
+def test_refresh_case_summary_scores_image_design_from_design_total_when_image_fact_blocked(tmp_path: Path) -> None:
+    """验证图片设计得分不再依赖 image_fact 成功返回。"""
+    case_dir = tmp_path / "tmp" / "SM_TEST"
+    _write_json(
+        case_dir / "summary.json",
+        {
+            "case_id": "SM_TEST",
+            "description": "test",
+            "session_id": "session-1",
+            "source_mode": "results_assets",
+            "success": True,
+        },
+    )
+    _write_json(case_dir / "outline_hard_rule_compare.json", {"overall_passed": True, "field_results": {"a": {"passed": True}}})
+    _write_json(case_dir / "story_hard_rule_compare.json", {"overall_passed": True, "field_results": {"a": {"passed": True}}})
+    _write_json(
+        case_dir / "image_design_validation.json",
+        {
+            "is_passed": False,
+            "summary": "bad",
+            "issues": [
+                {"issue_id": "图2、图3、图4、图5（对应id:2,3,4,5）"},
+            ],
+        },
+    )
+    _write_json(
+        case_dir / "image_fact_validation.json",
+        {
+            "status": "blocked",
+            "overall_passed": False,
+            "illustrations": [],
+            "final_image": {},
+        },
+    )
+    generate_images_dir = tmp_path / "assets" / "SM_TEST" / "session-1" / "generate_images"
+    generate_images_dir.mkdir(parents=True, exist_ok=True)
+    _write_json(
+        generate_images_dir / "generate_images_6_image_design.json",
+        {
+            "illustrations": [
+                {"id": 1},
+                {"id": 2},
+                {"id": 3},
+                {"id": 4},
+                {"id": 5},
+            ]
+        },
+    )
+
+    pipeline.TMP_DIR = case_dir.parent  # type: ignore[assignment]
+    pipeline.RESULTS_DIR = tmp_path  # type: ignore[assignment]
+    result = pipeline.refresh_case_summary("SM_TEST")
+
+    assert result["image_design"]["total_count"] == 5
+    assert result["scorecard"]["breakdown"]["image_design_score"] == 2.0
 
 
 def _write_json(path: Path, data: dict) -> None:

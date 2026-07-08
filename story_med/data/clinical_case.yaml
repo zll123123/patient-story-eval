@@ -483,6 +483,8 @@ clinical_cases:
         value:
           gender: 男
           age: 60
+          age_reference_date: '2024-08-18'
+          admission_date: '2024-08-18'
     primary_diagnosis:
       name: 核心诊断
       expected:

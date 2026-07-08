@@ -21,6 +21,7 @@ from story_med.clients.agent_task_client import (
 from story_med.clients.story_client import create_session
 from story_med.config.app_config import StoryMedConfig
 from story_med.config.settings import ASSETS_DIR, EDIT_RESULTS_DIR
+from story_med.utils.artifact_cleaner import clear_edit_case_artifacts
 
 
 def run_story_adjustment(
@@ -47,6 +48,7 @@ def run_story_adjustment(
         调整节点运行摘要。
     """
     _validate_inputs(case_id, session_id, task_id, message)
+    clear_edit_case_artifacts(case_id)
     http_session = session or create_session()
     output_dir = EDIT_RESULTS_DIR / case_id
     stream_path = output_dir / f"{session_id}_adjustment_stream.txt"
@@ -65,7 +67,9 @@ def run_story_adjustment(
             output_path=stream_path,
         )
         stream_errors = extract_stream_errors(stream_path)
-        downloaded_assets = [] if stream_errors else _download_adjustment_assets(
+        has_task_completed = detect_task_completed(stream_path)
+        success = has_task_completed and not stream_errors
+        downloaded_assets = [] if not success else _download_adjustment_assets(
             http_session,
             config,
             case_id,
@@ -78,10 +82,11 @@ def run_story_adjustment(
             "task_id": task_id,
             "agent_type": agent_type,
             "message": message,
-            "success": not stream_errors,
+            "success": success,
             "status_code": response.status_code,
             "response_body": response.body,
             "stream_output_path": str(stream_path),
+            "has_task_completed": has_task_completed,
             "stream_errors": stream_errors,
             "downloaded_assets": downloaded_assets,
             "started_at": started_at,
@@ -167,6 +172,27 @@ def extract_stream_errors(stream_path: Path) -> List[str]:
         raw_payload = payload.get("raw") if isinstance(payload, dict) else {}
         _collect_stream_error(raw_payload, errors)
     return errors
+
+
+def detect_task_completed(stream_path: Path) -> bool:
+    """判断调整 SSE 原始流中是否出现任务完成事件。
+
+    Args:
+        stream_path: SSE 原始流路径。
+
+    Returns:
+        是否命中 TASK_COMPLETED。
+    """
+    if not stream_path.exists():
+        return False
+    for line in stream_path.read_text(encoding="utf-8").splitlines():
+        if not line.startswith("data:"):
+            continue
+        raw_data = _safe_json_loads(line[5:].strip())
+        message_type = str(raw_data.get("message_type") or "").upper()
+        if message_type == "TASK_COMPLETED":
+            return True
+    return False
 
 
 def _download_adjustment_assets(

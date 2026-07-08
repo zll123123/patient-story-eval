@@ -5,12 +5,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict
 
+import pytest
+
+from story_med.adapters.patient_case_image_agent import PatientCaseImageAgentAdapter
 from story_med.adapters.patient_case_image_agent import (
     _content_hub_task_from_create_response,
     _case_generation_message,
+    _is_history_complete,
     detect_content_hub_upstream_error,
     normalize_content_hub_history,
 )
+from story_med.config.app_config import StoryMedConfig
 from story_med.models.case_model import StoryCaseConfig
 
 
@@ -208,6 +213,83 @@ def test_case_generation_message_uses_creative_brief() -> None:
     assert _case_generation_message(case) == "温暖克制，保留病例事实"
 
 
+def test_is_history_complete_returns_true_when_core_artifacts_all_exist() -> None:
+    """验证 history 包含核心产物时判定为完整。"""
+    history = {
+        "artifacts": {
+            "outline": [{"oss_key": "outline.md"}],
+            "story": [{"oss_key": "story.md"}],
+            "image": [{"oss_key": "image_design.json"}],
+            "html": [{"oss_key": "index.html"}],
+        }
+    }
+
+    assert _is_history_complete(history) is True
+
+
+def test_is_history_complete_returns_false_when_html_missing() -> None:
+    """验证 history 缺少最终长图产物时不判定完整。"""
+    history = {
+        "artifacts": {
+            "outline": [{"oss_key": "outline.md"}],
+            "story": [{"oss_key": "story.md"}],
+            "image": [{"oss_key": "image_design.json"}],
+            "html": [],
+        }
+    }
+
+    assert _is_history_complete(history) is False
+
+
+def test_wait_for_terminal_history_retries_until_complete(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """验证 stream 断开后会轮询 history 直到产物完整。"""
+    adapter = PatientCaseImageAgentAdapter(_build_config(tmp_path), session=object())
+    pending_body = _history_body(
+        [
+            _agent_frame(
+                {
+                    "status": "PROCESSING",
+                    "data": {
+                        "type": "file",
+                        "files": [{"type": "markdown", "title": "故事大纲", "oss_key": "story-med/patient_case/session-1/outline.md"}],
+                    },
+                }
+            )
+        ]
+    )
+    complete_body = _history_body(
+        [
+            _agent_frame(
+                {
+                    "status": "PROCESSING",
+                    "data": {
+                        "type": "file",
+                        "files": [
+                            {"type": "markdown", "title": "故事大纲", "oss_key": "story-med/patient_case/session-1/outline.md"},
+                            {"type": "markdown", "title": "故事正文", "oss_key": "story-med/patient_case/session-1/story.md"},
+                            {"type": "json", "title": "配图设计", "oss_key": "story-med/patient_case/session-1/image_design.json"},
+                            {"type": "html", "title": "最终页面", "oss_key": "story-med/patient_case/session-1/index.html"},
+                        ],
+                    },
+                }
+            )
+        ]
+    )
+    responses = [_fake_story_response(pending_body), _fake_story_response(complete_body)]
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        "story_med.adapters.patient_case_image_agent.get_agent_task_history",
+        lambda session, config, task_id: calls.append(task_id) or responses.pop(0),
+    )
+    monkeypatch.setattr("story_med.adapters.patient_case_image_agent.sleep", lambda _seconds: None)
+
+    result = adapter._wait_for_terminal_history("task-1")
+
+    assert result.body == complete_body
+    assert calls == ["task-1", "task-1"]
+
+
 def _history_body(frames: list[Dict[str, Any]]) -> Dict[str, Any]:
     """构建中台 history 响应体。"""
     return {"success": True, "data": {"turns": [{"frames": frames}]}}
@@ -216,3 +298,37 @@ def _history_body(frames: list[Dict[str, Any]]) -> Dict[str, Any]:
 def _agent_frame(raw: Dict[str, Any]) -> Dict[str, Any]:
     """构建中台 AGENT_EVENT frame。"""
     return {"message_type": "AGENT_EVENT", "payload": {"raw": raw}}
+
+
+def _build_config(tmp_path: Path) -> StoryMedConfig:
+    """构建适配器单测配置。"""
+    return StoryMedConfig(
+        base_url="https://old.example",
+        timeout_seconds=1,
+        verify_ssl=True,
+        accept="application/json",
+        user_agent="pytest",
+        origin="",
+        referer="",
+        adjust_base_url="https://hub.example",
+        adjust_auth_token="token",
+        adjust_origin="",
+        adjust_referer="",
+        adjust_accept="text/event-stream",
+        adjust_auth_username="admin",
+        adjust_auth_password="password",
+        active_env="test",
+        result_file=str(tmp_path / "result.json"),
+    )
+
+
+def _fake_story_response(body: Dict[str, Any]) -> Any:
+    """构建最小化 StoryApiResponse 替身。"""
+    class _Resp:
+        status_code = 200
+
+        def __init__(self, payload: Dict[str, Any]) -> None:
+            self.body = payload
+            self.data = payload
+
+    return _Resp(body)

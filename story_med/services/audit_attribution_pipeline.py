@@ -11,6 +11,7 @@ from story_med.config.llm_app_config import StoryMedLlmConfig
 from story_med.config.settings import RESULTS_DIR, PROMPTS_DIR, TMP_DIR
 from story_med.services.clinical_baseline import load_clinical_baseline
 from story_med.services.case_loader import get_story_case
+from story_med.services.summary_pipeline import refresh_case_summary
 
 ATTRIBUTION_PROMPT_FILE = PROMPTS_DIR / "audit_analysis.md"
 
@@ -18,7 +19,9 @@ ATTRIBUTION_PROMPT_FILE = PROMPTS_DIR / "audit_analysis.md"
 def run_case_audit_attribution(llm_config: StoryMedLlmConfig, case_id: str) -> Dict[str, Any]:
     """按 case 执行审核归因，仅在存在失败审核项时触发。"""
     case_dir = TMP_DIR / case_id
-    summary = _read_json(case_dir / "summary.json")
+    # 归因前先刷新 summary，确保 audit_overview 已合并最新审核结果，
+    # 避免读取到仅包含 outline/story 的旧 summary 而被误判为 skipped。
+    summary = refresh_case_summary(case_id)
     failed_audits = _failed_audit_keys(summary.get("audit_overview"))
     if not failed_audits:
         result = _skip_result(case_id)

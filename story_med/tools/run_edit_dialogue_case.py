@@ -14,6 +14,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from story_med.config.app_config import load_app_config
 from story_med.config.llm_app_config import load_llm_config
+from story_med.services.edit_dialogue_config import load_edit_dialogue_cases
 from story_med.services.edit_dialogue_pipeline import run_edit_dialogue_case
 
 
@@ -47,10 +48,13 @@ def main() -> int:
 def _resolve_case_ids(case_id: str, case_ids: str) -> list[str]:
     """解析命令行传入的对话用例 ID。"""
     raw_value = case_ids.strip() or case_id.strip()
-    values = [item.strip() for item in re.split(r"[,;|]+", raw_value) if item.strip()]
-    if not values:
-        raise ValueError("必须传入 --case-id 或 --case-ids")
-    return values
+    if raw_value:
+        return [item.strip() for item in re.split(r"[,;|]+", raw_value) if item.strip()]
+    return [
+        str(item.get("case_id") or "").strip()
+        for item in load_edit_dialogue_cases()
+        if str(item.get("case_id") or "").strip()
+    ]
 
 
 def _compact_results(results: list[dict]) -> list[dict]:

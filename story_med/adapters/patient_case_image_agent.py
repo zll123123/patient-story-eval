@@ -6,7 +6,7 @@ import mimetypes
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from time import perf_counter
+from time import perf_counter, sleep
 from typing import Any, Callable, Dict, List
 
 from loguru import logger
@@ -32,6 +32,9 @@ from story_med.config.settings import ASSETS_DIR, TMP_DIR
 from story_med.models.case_model import StoryAgentRunResult, StoryCaseConfig, StoryStepResult
 from story_med.services.case_image_input import list_case_images_by_path
 from story_med.services.clinical_case_config import normalize_case_parse_text
+
+HISTORY_POLL_TIMEOUT_SECONDS = 600
+HISTORY_POLL_INTERVAL_SECONDS = 10
 
 
 class PatientCaseImageAgentAdapter:
@@ -60,6 +63,7 @@ class PatientCaseImageAgentAdapter:
         started_perf = perf_counter()
         steps: List[StoryStepResult] = []
         session_id = ""
+        stream_warning = ""
         try:
             ensure_content_hub_auth(self._session, self._config)
             uploaded_files = self._upload_case_images(case)
@@ -90,22 +94,26 @@ class PatientCaseImageAgentAdapter:
                 **task_payload,
                 "form": {"session_id": session_id, **task_payload},
             }
-            stream_api, stream_timing = self._timed_call(
-                lambda: self._stream_task(case.case_id, task_id, start_payload)
-            )
-            steps.append(
-                self._step(
-                    "stream_agent_task",
-                    AGENT_TASK_STREAM_PATH,
-                    start_payload,
-                    stream_api,
-                    session_id,
-                    stream_timing,
+            try:
+                stream_api, stream_timing = self._timed_call(
+                    lambda: self._stream_task(case.case_id, task_id, start_payload)
                 )
-            )
+                steps.append(
+                    self._step(
+                        "stream_agent_task",
+                        AGENT_TASK_STREAM_PATH,
+                        start_payload,
+                        stream_api,
+                        session_id,
+                        stream_timing,
+                    )
+                )
+            except Exception as exc:
+                stream_warning = str(exc)
+                logger.warning("图片病例患者故事 SSE 提前断开，转为 history 轮询: case_id={}, error={}", case.case_id, stream_warning)
 
             history_api, history_timing = self._timed_call(
-                lambda: get_agent_task_history(self._session, self._config, task_id)
+                lambda: self._wait_for_terminal_history(task_id)
             )
             steps.append(
                 self._step(
@@ -131,6 +139,7 @@ class PatientCaseImageAgentAdapter:
                 downloaded_assets,
                 case_parse_text,
                 content_hub_task,
+                stream_warning,
                 started_at,
                 started_perf,
             )
@@ -176,6 +185,23 @@ class PatientCaseImageAgentAdapter:
         output_path = TMP_DIR / case_id / f"{task_id}_agent_task_stream.txt"
         return stream_agent_task(self._session, self._config, payload, output_path)
 
+    def _wait_for_terminal_history(self, task_id: str) -> StoryApiResponse:
+        """轮询 history，直到任务完整、明确失败或超时。"""
+        deadline = perf_counter() + HISTORY_POLL_TIMEOUT_SECONDS
+        last_response: StoryApiResponse | None = None
+        while perf_counter() < deadline:
+            response = get_agent_task_history(self._session, self._config, task_id)
+            last_response = response
+            body = response.body if isinstance(response.body, dict) else {}
+            if detect_content_hub_upstream_error(body):
+                return response
+            if _is_history_complete(normalize_content_hub_history(body)):
+                return response
+            sleep(HISTORY_POLL_INTERVAL_SECONDS)
+        if last_response is not None:
+            return last_response
+        raise RuntimeError(f"内容中台 history 轮询超时且未返回有效响应: task_id={task_id}")
+
     def _download_history_artifacts(
         self,
         case_id: str,
@@ -184,10 +210,15 @@ class PatientCaseImageAgentAdapter:
     ) -> List[Dict[str, Any]]:
         """下载 history 中的全部交付物。"""
         results: List[Dict[str, Any]] = []
+        seen_file_keys: set[str] = set()
         for item in _iter_artifacts(history):
+            file_key = item["file_key"]
+            if file_key in seen_file_keys:
+                continue
+            seen_file_keys.add(file_key)
             step_name = _artifact_step_name(item["group"], item["artifact"])
-            download_info = create_story_med_download_url(self._session, self._config, item["file_key"])
-            output_path = ASSETS_DIR / case_id / session_id / step_name / Path(item["file_key"]).name
+            download_info = create_story_med_download_url(self._session, self._config, file_key)
+            output_path = ASSETS_DIR / case_id / session_id / step_name / Path(file_key).name
             downloaded = download_story_med_file(str(download_info["download_url"]), output_path, self._config)
             results.append(
                 {
@@ -240,6 +271,7 @@ class PatientCaseImageAgentAdapter:
         downloaded_assets: List[Dict[str, Any]],
         case_parse_text: str,
         content_hub_task: Dict[str, Any],
+        stream_warning: str,
         started_at: str,
         started_perf: float,
     ) -> StoryAgentRunResult:
@@ -250,7 +282,11 @@ class PatientCaseImageAgentAdapter:
             session_id=session_id,
             success=True,
             steps=steps,
-            session_response={"session_id": session_id, "content_hub_task": content_hub_task},
+            session_response={
+                "session_id": session_id,
+                "content_hub_task": content_hub_task,
+                "stream_warning": stream_warning,
+            },
             outline_response=_artifacts_by_group(history, "outline"),
             story_response=_artifacts_by_group(history, "story"),
             images_response=_artifacts_by_group(history, "image"),
@@ -373,6 +409,15 @@ def _artifacts_by_group(history: Dict[str, Any], group: str) -> Dict[str, Any]:
         return {}
     value = artifacts.get(group)
     return {"artifacts": value} if value else {}
+
+
+def _is_history_complete(history: Dict[str, Any]) -> bool:
+    """判断 history 是否已经具备完整审核所需的核心产物。"""
+    artifacts = history.get("artifacts") or {}
+    if not isinstance(artifacts, dict):
+        return False
+    required_groups = ("outline", "story", "image", "html")
+    return all(isinstance(artifacts.get(group), list) and bool(artifacts.get(group)) for group in required_groups)
 
 
 def normalize_content_hub_history(body: Dict[str, Any]) -> Dict[str, Any]:

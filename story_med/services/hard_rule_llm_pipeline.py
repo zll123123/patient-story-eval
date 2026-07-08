@@ -140,7 +140,7 @@ def _read_step_text(run_result: StoryAgentRunResult, step_name: str) -> str:
         for item in run_result.downloaded_assets
         if item.get("step_name") == step_name and item.get("local_path")
     ]
-    text_files = [path for path in files if path.exists() and path.suffix.lower() in {".md", ".txt"}]
+    text_files = _dedupe_text_paths(files)
     if len(text_files) != 1:
         raise RuntimeError(f"{run_result.case_id} {step_name} 文本文件数量异常: {text_files}")
     return text_files[0].read_text(encoding="utf-8")
@@ -149,10 +149,26 @@ def _read_step_text(run_result: StoryAgentRunResult, step_name: str) -> str:
 def _read_asset_text(asset_dir: Path, step_name: str) -> str:
     """读取 results/assets 下指定步骤的 Markdown 文本。"""
     step_dir = asset_dir / step_name
-    text_files = [path for path in step_dir.glob("*") if path.suffix.lower() in {".md", ".txt"}]
+    text_files = _dedupe_text_paths(step_dir.glob("*"))
     if len(text_files) != 1:
         raise RuntimeError(f"{step_name} 文本文件数量异常: {text_files}")
     return text_files[0].read_text(encoding="utf-8")
+
+
+def _dedupe_text_paths(paths: Any) -> List[Path]:
+    """按最终落盘路径去重文本文件列表。
+
+    上游 history 里同一个 OSS 文件可能在多个 frame 中重复上报，
+    本地下载记录会出现多个相同 local_path。这里按规范化后的路径去重，
+    只保留最终落盘文件本身。
+    """
+    unique: Dict[str, Path] = {}
+    for raw_path in paths:
+        path = Path(raw_path)
+        if not path.exists() or path.suffix.lower() not in {".md", ".txt"}:
+            continue
+        unique[str(path.resolve())] = path
+    return list(unique.values())
 
 
 def _build_summary(

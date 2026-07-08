@@ -27,6 +27,7 @@ def test_run_case_audit_attribution_skips_when_all_audits_pass(tmp_path: Path) -
         },
     )
     pipeline.TMP_DIR = case_dir.parent  # type: ignore[assignment]
+    pipeline.refresh_case_summary = lambda case_id: json.loads((case_dir / "summary.json").read_text(encoding="utf-8"))  # type: ignore[assignment]
 
     result = pipeline.run_case_audit_attribution(_dummy_llm_config(), "SM_TEST")
 
@@ -72,6 +73,7 @@ def test_run_case_audit_attribution_calls_model_when_any_audit_fails(
 
     monkeypatch.setattr(pipeline, "call_llm_json", fake_call_llm_json)
     monkeypatch.setattr(pipeline, "load_clinical_baseline", lambda case: "clinical baseline")
+    monkeypatch.setattr(pipeline, "refresh_case_summary", lambda case_id: json.loads((case_dir / "summary.json").read_text(encoding="utf-8")))
     monkeypatch.setattr(
         pipeline,
         "_load_case",
@@ -98,6 +100,48 @@ def test_run_case_audit_attribution_calls_model_when_any_audit_fails(
     assert "clinical baseline" in captured["prompt"]
     written = json.loads((case_dir / "audit_analysis.json").read_text(encoding="utf-8"))
     assert written["status"] == "success"
+
+
+def test_run_case_audit_attribution_refreshes_summary_before_skip_decision(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """验证归因前会先刷新 summary，避免旧 summary 误判 skipped。"""
+    case_dir = tmp_path / "tmp" / "SM_TEST"
+    _write_json(case_dir / "summary.json", {"case_id": "SM_TEST"})
+    _write_json(case_dir / "story_hard_rule_compare.json", {"overall_passed": False, "field_results": {"timeline": {"passed": False}}})
+    prompt_file = tmp_path / "prompts" / "audit_analysis.md"
+    prompt_file.parent.mkdir(parents=True, exist_ok=True)
+    prompt_file.write_text("请归因", encoding="utf-8")
+
+    pipeline.TMP_DIR = case_dir.parent  # type: ignore[assignment]
+    pipeline.ATTRIBUTION_PROMPT_FILE = prompt_file  # type: ignore[assignment]
+
+    monkeypatch.setattr(
+        pipeline,
+        "refresh_case_summary",
+        lambda case_id: {
+            "case_id": case_id,
+            "session_id": "session-1",
+            "audit_overview": {
+                "outline_passed": True,
+                "story_passed": False,
+            },
+        },
+    )
+    monkeypatch.setattr(pipeline, "load_clinical_baseline", lambda case: "clinical baseline")
+    monkeypatch.setattr(
+        pipeline,
+        "_load_case",
+        lambda case_id: type("DummyCase", (), {"case_id": case_id, "creative_brief": ""})(),
+    )
+    monkeypatch.setattr(pipeline, "_load_intermediate_outputs", lambda case_id, session_id: {})
+    monkeypatch.setattr(pipeline, "call_llm_json", lambda config, prompt: {"ok": True})
+
+    result = pipeline.run_case_audit_attribution(_dummy_llm_config(), "SM_TEST")
+
+    assert result["status"] == "success"
+    assert result["failed_audits"] == ["story_passed"]
 
 
 def _write_json(path: Path, data: dict) -> None:

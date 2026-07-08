@@ -45,10 +45,12 @@ def _normalize_dialogue_case(raw_case: Dict[str, Any]) -> Dict[str, Any]:
     """标准化多轮编辑对话测试用例。"""
     turns = raw_case.get("turns") if isinstance(raw_case.get("turns"), list) else []
     normalized_turns = [_normalize_turn(item) for item in turns if isinstance(item, dict)]
+    evaluation_mode = str(raw_case.get("evaluation_mode") or "per_turn").strip() or "per_turn"
     return {
         "case_id": str(raw_case.get("case_id") or "").strip(),
         "ref_clinical_case_id": str(raw_case.get("ref_clinical_case_id") or "").strip(),
         "summary": str(raw_case.get("summary") or "").strip(),
+        "evaluation_mode": evaluation_mode,
         "turn_count": int(raw_case.get("turn_count") or len(normalized_turns)),
         "turns": normalized_turns,
         "coverage": raw_case.get("coverage") if isinstance(raw_case.get("coverage"), dict) else {},
@@ -60,6 +62,10 @@ def _normalize_turn(raw_turn: Dict[str, Any]) -> Dict[str, Any]:
     intent = raw_turn.get("intent") if isinstance(raw_turn.get("intent"), dict) else {}
     targets = intent.get("targets") if isinstance(intent.get("targets"), list) else []
     agents = raw_turn.get("involved_agents") if isinstance(raw_turn.get("involved_agents"), list) else []
+    evaluation_focus = _normalize_evaluation_focus(
+        raw_turn.get("evaluation_focus"),
+        int(raw_turn.get("turn_id") or 0),
+    )
     return {
         "turn_id": int(raw_turn.get("turn_id") or 0),
         "message": str(raw_turn.get("message") or "").strip(),
@@ -68,5 +74,41 @@ def _normalize_turn(raw_turn: Dict[str, Any]) -> Dict[str, Any]:
             "targets": [str(target).strip() for target in targets if str(target).strip()],
         },
         "involved_agents": [str(agent).strip() for agent in agents if str(agent).strip()],
-        "evaluation_focus": str(raw_turn.get("evaluation_focus") or "").strip(),
+        "evaluation_focus": evaluation_focus,
     }
+
+
+def _normalize_evaluation_focus(raw_focus: Any, turn_id: int) -> List[Dict[str, str]]:
+    """标准化单轮评估点。
+
+    Args:
+        raw_focus: 原始评估点配置。
+        turn_id: 当前轮次 ID。
+
+    Returns:
+        结构化评估点列表。
+    """
+    if isinstance(raw_focus, list):
+        items = [_normalize_focus_item(item, turn_id, index) for index, item in enumerate(raw_focus, start=1)]
+        return [item for item in items if item]
+    if isinstance(raw_focus, dict):
+        item = _normalize_focus_item(raw_focus, turn_id, 1)
+        return [item] if item else []
+    text = str(raw_focus or "").strip()
+    if not text:
+        return []
+    return [{"id": f"T{turn_id}", "description": text}]
+
+
+def _normalize_focus_item(raw_item: Any, turn_id: int, index: int) -> Dict[str, str]:
+    """标准化单个评估点。"""
+    if isinstance(raw_item, dict):
+        description = str(raw_item.get("description") or "").strip()
+        if not description:
+            return {}
+        focus_id = str(raw_item.get("id") or f"T{turn_id}_{index}").strip()
+        return {"id": focus_id, "description": description}
+    description = str(raw_item or "").strip()
+    if not description:
+        return {}
+    return {"id": f"T{turn_id}_{index}", "description": description}

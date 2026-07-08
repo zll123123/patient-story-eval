@@ -85,10 +85,21 @@ def _latest_asset_session_id(case: StoryCaseConfig) -> str:
 def _read_asset_text(asset_dir: Path, step_name: str) -> str:
     """读取指定步骤的唯一文本产物。"""
     step_dir = asset_dir / step_name
-    text_files = [path for path in step_dir.glob("*") if path.suffix.lower() in {".md", ".txt"}]
+    text_files = _dedupe_text_paths(step_dir.glob("*"))
     if len(text_files) != 1:
         raise RuntimeError(f"{step_name} 文本文件数量异常: {text_files}")
     return text_files[0].read_text(encoding="utf-8")
+
+
+def _dedupe_text_paths(paths: Any) -> list[Path]:
+    """按最终落盘路径去重文本文件列表。"""
+    unique: dict[str, Path] = {}
+    for raw_path in paths:
+        path = Path(raw_path)
+        if not path.exists() or path.suffix.lower() not in {".md", ".txt"}:
+            continue
+        unique[str(path.resolve())] = path
+    return list(unique.values())
 
 
 def _pending_prompt_result(case: StoryCaseConfig) -> Dict[str, Any]:
