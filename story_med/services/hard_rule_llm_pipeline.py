@@ -6,26 +6,26 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from story_med.adapters.patient_story_agent import PatientStoryAgentAdapter
 from story_med.clients.llm_client import call_llm_json
 from story_med.config.llm_app_config import StoryMedLlmConfig
 from story_med.config.settings import PROMPTS_DIR, RESULTS_DIR, TMP_DIR
 from story_med.models.case_model import StoryAgentRunResult, StoryCaseConfig
-from story_med.services.clinical_baseline import load_clinical_baseline
-from story_med.services.clinical_case_config import load_hard_rule_fields
+from story_med.services.clinical_extract_baseline_service import load_clinical_baseline
+from story_med.services.yaml_case_service import load_hard_rule_fields
 from story_med.utils.yaml_loader import load_yaml_file
 
 
 def run_case_compare_pipeline(
-    adapter: PatientStoryAgentAdapter,
+    adapter: Any,
     llm_config: StoryMedLlmConfig,
     case: StoryCaseConfig,
-    include_visual_steps: bool = False,
+    include_visual_steps: bool = True,
 ) -> Dict[str, Any]:
     """执行单条 case 到硬规则对比结果阶段。"""
     output_dir = TMP_DIR / case.case_id
     output_dir.mkdir(parents=True, exist_ok=True)
-    run_result = adapter.run_case(case) if include_visual_steps else adapter.run_case_until_story(case)
+    del include_visual_steps
+    run_result = adapter.run_case(case)
     _write_agent_run_result(run_result)
     if not run_result.success:
         raise RuntimeError(f"真实链路执行失败: {case.case_id} {run_result.error}")

@@ -13,9 +13,8 @@ from story_med.config.llm_app_config import load_llm_config
 from story_med.config.app_config import load_app_config
 from story_med.config.vision_app_config import load_vision_config
 from story_med.config.settings import DEFAULT_CONFIG_FILE
-from story_med.services.case_loader import load_story_cases
+from story_med.services.yaml_case_service import load_story_cases
 from story_med.adapters.patient_case_image_agent import PatientCaseImageAgentAdapter
-from story_med.adapters.patient_story_agent import PatientStoryAgentAdapter
 from story_med.evals.patient_story_deepeval_metrics import build_patient_story_metrics
 from deepeval import assert_test
 from deepeval.test_case.llm_test_case import LLMTestCase
@@ -47,10 +46,8 @@ def test_patient_story_deepeval_pipeline(case_id: str) -> None:
     llm_config = load_llm_config()
     vision_config = load_vision_config()
     app_config = load_app_config(DEFAULT_CONFIG_FILE)
-    adapter = PatientStoryAgentAdapter(app_config)
     image_adapter = PatientCaseImageAgentAdapter(app_config)
     result = run_single_case(
-        adapter=adapter,
         image_adapter=image_adapter,
         llm_config=llm_config,
         vision_config=vision_config,

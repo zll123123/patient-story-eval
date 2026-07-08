@@ -10,7 +10,7 @@ from story_med.clients.llm_client import call_llm_json
 from story_med.config.llm_app_config import StoryMedLlmConfig
 from story_med.config.settings import PROMPTS_DIR, RESULTS_DIR, TMP_DIR
 from story_med.models.case_model import StoryCaseConfig
-from story_med.services.clinical_baseline import load_clinical_baseline
+from story_med.services.clinical_extract_baseline_service import load_clinical_baseline
 
 STORY_COMPLIANCE_PROMPT_FILE = PROMPTS_DIR / "story_compliance_validate.md"
 

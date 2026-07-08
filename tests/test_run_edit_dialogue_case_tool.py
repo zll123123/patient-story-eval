@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from story_med.tools import run_edit_dialogue_case as tool
+from story_med.commands import run_edit_dialogue_case as tool
 
 
 def test_resolve_case_ids_supports_multiple_delimiters() -> None:

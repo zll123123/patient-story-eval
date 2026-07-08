@@ -66,7 +66,7 @@ story_med/data/hard_rule_fields.yaml
 新增病例图片后，先运行 clinical extract。该步骤只生成病例事实基准，不调用患者故事 Agent。
 
 ```bash
-PYTHONPATH=. python3 story_med/tools/run_clinical_extract.py \
+PYTHONPATH=. python3 story_med/commands/run_clinical_extract.py \
   --image-dir 卢-肺癌
 ```
 
@@ -103,7 +103,7 @@ story_med/output/卢-肺癌/clinical_extract.json
 以当前已有的 case2 和 case3 为例：
 
 ```bash
-python3 story_med/tools/run_patient_story_deepeval.py \
+python3 story_med/commands/run_patient_story_deepeval.py \
   --mode image_case_pipeline \
   --case-ids "SM_002,SM_003" \
   --identifier patient-story-sm002-sm003-full-audit
@@ -130,7 +130,7 @@ story_med/output/卢-肺癌/clinical_extract.md
 如果要只跑单个 case：
 
 ```bash
-python3 story_med/tools/run_patient_story_deepeval.py \
+python3 story_med/commands/run_patient_story_deepeval.py \
   --mode image_case_pipeline \
   --case-ids SM_003 \
   --identifier patient-story-sm003-full-audit
@@ -139,7 +139,7 @@ python3 story_med/tools/run_patient_story_deepeval.py \
 `--case-ids` 支持 `,`、`;`、`|` 分隔多个 case：
 
 ```bash
-python3 story_med/tools/run_patient_story_deepeval.py \
+python3 story_med/commands/run_patient_story_deepeval.py \
   --mode image_case_pipeline \
   --case-ids "SM_001;SM_002|SM_003"
 ```
@@ -147,7 +147,7 @@ python3 story_med/tools/run_patient_story_deepeval.py \
 如果要全量重跑所有 case，省略 `--case-ids`：
 
 ```bash
-python3 story_med/tools/run_patient_story_deepeval.py \
+python3 story_med/commands/run_patient_story_deepeval.py \
   --mode image_case_pipeline \
   --identifier patient-story-all-full-audit
 ```
@@ -163,7 +163,7 @@ python3 story_med/tools/run_patient_story_deepeval.py \
 如果已有 `story_med/results/assets/{case_id}/{session_id}/` 生成产物，只想重跑审核、归因、打分和上报：
 
 ```bash
-python3 story_med/tools/run_patient_story_deepeval.py \
+python3 story_med/commands/run_patient_story_deepeval.py \
   --mode audit_only \
   --case-ids "SM_002,SM_003" \
   --identifier patient-story-sm002-sm003-audit-only
@@ -175,41 +175,31 @@ python3 story_med/tools/run_patient_story_deepeval.py \
 - `audit_only` 仍然要求对应 case 的 `clinical_extract.md` 已存在。
 - `audit_only` 使用当前 `results/assets` 中最新 session。
 
-## 调整已生成的患者故事结果
+## 多轮编辑评估
 
-如果已经完成患者故事生成，需要基于自然语言要求调整结果，可以单独运行调整节点。该节点不会自动插入完整生成或审核流程。
+如果已经完成患者故事生成，需要执行 `edit_dialogue_cases.yaml` 中定义的多轮编辑与覆盖评估：
 
 ```bash
-STORY_MED_ADJUST_AUTH_TOKEN='你的访问 token' \
-python3 story_med/tools/run_story_adjustment.py \
-  --case-id SM_001 \
-  --session-id 5a11cf9e-2960-4801-aefc-dd8e0f7d952a \
-  --task-id 2071468448195149825 \
-  --message "图片风格调整的更写实一点"
+python3 story_med/commands/run_edit_dialogue_case.py
 ```
 
-默认调整接口配置在 `story_med/config/config.yaml`：
+指定单个或多个编辑对话 case：
 
-- `adjust_base_url`: `https://pharma-content-hub-java-dev.nullht.com`
-- `adjust_origin`: `https://pharma-hub.nullht.com`
-- `adjust_referer`: `https://pharma-hub.nullht.com/`
-
-敏感 token 不写入代码，优先通过环境变量传入：
-
-```text
-STORY_MED_ADJUST_AUTH_TOKEN
+```bash
+python3 story_med/commands/run_edit_dialogue_case.py --case-ids "EDG_001,EDG_002"
 ```
 
 输出位置：
 
 ```text
-story_med/results/temp/{case_id}/{session_id}_adjustment_stream.txt
-story_med/results/temp/{case_id}/story_adjustment_result.json
+story_med/results/edit_dialogue/{case_id}/result.json
+story_med/results/edit_dialogue/{case_id}/edit_audit_analysis.json
+story_med/results/assets/{turn_case_id}/{session_id}/adjustment/
 ```
 
 ## DeepEval / Confident AI
 
-统一入口 `story_med/tools/run_patient_story_deepeval.py` 内部会调用：
+统一入口 `story_med/commands/run_patient_story_deepeval.py` 内部会调用：
 
 ```text
 deepeval test run tests/test_patient_story_deepeval_pipeline.py
@@ -254,7 +244,7 @@ story_med/results/temp/{case_id}/
 - `story_extracted_fields.json`
 - `story_hard_rule_compare.json`
 - `image_design_validation.json`
-- `image_consistant_validation.json`
+- `image_consistency_validation.json`
 - `image_fact_validation.json`
 - `final_image_layout_validation.json`
 - `audit_analysis.json`
@@ -301,7 +291,7 @@ story_med/config/dev.env
 
 ```bash
 PYTHONPATH=. python3 - <<'PY'
-from story_med.services.case_loader import load_story_cases
+from story_med.services.yaml_case_service import load_story_cases
 print([(case.case_id, case.image_dir) for case in load_story_cases()])
 PY
 ```

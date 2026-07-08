@@ -1,4 +1,4 @@
-"""患者故事图片多模态评估流水线。"""
+"""患者故事图片审核编排服务。"""
 
 from __future__ import annotations
 
@@ -12,17 +12,17 @@ from story_med.config.llm_app_config import load_llm_config
 from story_med.config.settings import PROMPTS_DIR, RESULTS_DIR, TMP_DIR
 from story_med.config.vision_app_config import StoryMedVisionConfig
 from story_med.models.case_model import StoryCaseConfig
-from story_med.services.clinical_baseline import load_clinical_baseline
+from story_med.services.clinical_extract_baseline_service import load_clinical_baseline
+from story_med.services.final_image_layout_audit_service import validate_final_image_layout
 
 
-def run_latest_image_compare(config: StoryMedVisionConfig, case: StoryCaseConfig) -> Dict[str, Any]:
+def run_latest_image_audit(config: StoryMedVisionConfig, case: StoryCaseConfig) -> Dict[str, Any]:
     """对最近一次真实链路生成的图片执行多模态评估。"""
     result_data = _read_latest_run_result()
     case_id = str(result_data.get("case_id") or "")
     session_id = str(result_data.get("session_id") or "")
     if case_id != case.case_id:
         raise RuntimeError(f"最近运行结果不是当前 case: {case.case_id} != {case_id}")
-
     output_dir = TMP_DIR / case.case_id
     output_dir.mkdir(parents=True, exist_ok=True)
     try:
@@ -33,7 +33,7 @@ def run_latest_image_compare(config: StoryMedVisionConfig, case: StoryCaseConfig
     return report
 
 
-def run_case_latest_image_compare(config: StoryMedVisionConfig, case: StoryCaseConfig) -> Dict[str, Any]:
+def run_case_latest_image_audit(config: StoryMedVisionConfig, case: StoryCaseConfig) -> Dict[str, Any]:
     """对指定 case 最近一次成功产物执行多模态评估。"""
     session_id = _latest_asset_session_id(case)
     output_dir = TMP_DIR / case.case_id
@@ -52,9 +52,9 @@ def _build_success_report(config: StoryMedVisionConfig, case: StoryCaseConfig, s
     image_design = _read_image_design(asset_dir)
     design_validation = _validate_image_design(case, asset_dir, image_design)
     _write_json(design_validation, TMP_DIR / case.case_id / "image_design_validation.json")
-    consistant_validation = _validate_image_consistance(config, asset_dir, image_design)
-    _write_json(consistant_validation, TMP_DIR / case.case_id / "image_consistant_validation.json")
-    final_image_layout_validation = _validate_final_image_layout(config, case, asset_dir, image_design)
+    consistency_validation = _audit_image_consistency(config, asset_dir, image_design)
+    _write_json(consistency_validation, TMP_DIR / case.case_id / "image_consistency_validation.json")
+    final_image_layout_validation = validate_final_image_layout(config, case, asset_dir, image_design)
     _write_json(final_image_layout_validation, TMP_DIR / case.case_id / "final_image_layout_validation.json")
     illustration_results = _compare_illustrations(config, case, asset_dir, image_design)
     final_result = _compare_final_image(config, case, asset_dir, image_design)
@@ -105,50 +105,13 @@ def _compare_final_image(
     final_image = _find_single_image(asset_dir / "generate_final_image")
     payload = {
         "patient_case": _patient_case_baseline(case, asset_dir),
-        "images": [
-            {
-                "image_id": final_image.name,
-                "image_type": "final_composite",
-            }
-        ],
+        "images": [{"image_id": final_image.name, "image_type": "final_composite"}],
     }
     result = call_multimodal_json(config, _prompt_with_payload(payload), [final_image])
     return {"image_path": str(final_image), "result": result}
 
 
-def _validate_final_image_layout(
-    config: StoryMedVisionConfig,
-    case: StoryCaseConfig,
-    asset_dir: Path,
-    image_design: Dict[str, Any],
-) -> Dict[str, Any]:
-    """审核最终长图是否满足一图读懂的结构与顺序要求。"""
-    prompt_file = PROMPTS_DIR / "final_image_layout_validate.md"
-    if not prompt_file.exists():
-        return {
-            "status": "pending_prompt",
-            "is_passed": False,
-            "summary": f"缺少提示词文件: {prompt_file.name}",
-            "issues": [],
-        }
-    final_image = _find_single_image(asset_dir / "generate_final_image")
-    payload = {
-        "patient_case": _patient_case_baseline(case, asset_dir),
-        "image_design": image_design,
-    }
-    prompt = _final_image_layout_prompt(prompt_file, payload)
-    result = call_multimodal_json(config, prompt, [final_image], use_thumbnail=False)
-    return {
-        "status": "success",
-        "image_path": str(final_image),
-        **result,
-    }
-
-
-def _build_image_prompt(
-    case: StoryCaseConfig,
-    illustration: Dict[str, Any],
-) -> str:
+def _build_image_prompt(case: StoryCaseConfig, illustration: Dict[str, Any]) -> str:
     """构建单张图片评估提示词。"""
     payload = {
         "patient_case": _patient_case_baseline(case),
@@ -169,17 +132,10 @@ def _prompt_with_payload(payload: Dict[str, Any]) -> str:
     return f"{template}\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
 
 
-def _validate_image_design(
-    case: StoryCaseConfig,
-    asset_dir: Path,
-    image_design: Dict[str, Any],
-) -> Dict[str, Any]:
+def _validate_image_design(case: StoryCaseConfig, asset_dir: Path, image_design: Dict[str, Any]) -> Dict[str, Any]:
     """审核图片设计大纲的医学和常识合理性。"""
     llm_config = load_llm_config()
-    payload = {
-        "patient_case": _patient_case_baseline(case, asset_dir),
-        "image_design": image_design,
-    }
+    payload = {"patient_case": _patient_case_baseline(case, asset_dir), "image_design": image_design}
     return call_llm_json(llm_config, _image_design_validation_prompt(payload))
 
 
@@ -189,22 +145,19 @@ def _image_design_validation_prompt(payload: Dict[str, Any]) -> str:
     return f"{template}\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
 
 
-def _validate_image_consistance(
+def _audit_image_consistency(
     config: StoryMedVisionConfig,
     asset_dir: Path,
     image_design: Dict[str, Any],
 ) -> Dict[str, Any]:
     """审核图片与大纲的一致性以及多图全局一致性。"""
-    payload = {
-        "image_design": image_design,
-        "images": _build_consistance_images_payload(asset_dir, image_design),
-    }
-    prompt = _image_consistance_prompt(payload)
+    payload = {"image_design": image_design, "images": _build_consistency_images_payload(asset_dir, image_design)}
+    prompt = _image_consistency_prompt(payload)
     image_paths = [Path(item["local_path"]) for item in payload["images"] if item.get("local_path")]
     return call_multimodal_json(config, prompt, image_paths)
 
 
-def _build_consistance_images_payload(asset_dir: Path, image_design: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _build_consistency_images_payload(asset_dir: Path, image_design: Dict[str, Any]) -> List[Dict[str, Any]]:
     """构建一致性审核输入，包含设计图与实际图片映射。"""
     payload: List[Dict[str, Any]] = []
     for illustration in image_design.get("illustrations") or []:
@@ -220,15 +173,9 @@ def _build_consistance_images_payload(asset_dir: Path, image_design: Dict[str, A
     return payload
 
 
-def _image_consistance_prompt(payload: Dict[str, Any]) -> str:
+def _image_consistency_prompt(payload: Dict[str, Any]) -> str:
     """拼接图片与大纲一致性审核 prompt。"""
-    template = (PROMPTS_DIR / "image_consistant_validate.md").read_text(encoding="utf-8")
-    return f"{template}\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
-
-
-def _final_image_layout_prompt(prompt_file: Path, payload: Dict[str, Any]) -> str:
-    """拼接最终长图结构审核 prompt。"""
-    template = prompt_file.read_text(encoding="utf-8")
+    template = (PROMPTS_DIR / "image_consistency_validate.md").read_text(encoding="utf-8")
     return f"{template}\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
 
 
@@ -257,11 +204,7 @@ def _read_latest_run_result() -> Dict[str, Any]:
 def _latest_asset_session_id(case: StoryCaseConfig) -> str:
     """读取指定 case 最近一次成功产物的 session_id。"""
     case_asset_dir = RESULTS_DIR / "assets" / case.case_id
-    sessions = sorted(
-        [path for path in case_asset_dir.iterdir() if path.is_dir()],
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    )
+    sessions = sorted([path for path in case_asset_dir.iterdir() if path.is_dir()], key=lambda path: path.stat().st_mtime, reverse=True)
     if not sessions:
         raise FileNotFoundError(f"缺少图片审核产物目录: {case_asset_dir}")
     return sessions[0].name

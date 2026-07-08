@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from story_med.services import audit_attribution_pipeline as pipeline
+from story_med.services import audit_analysis_service as pipeline
 
 
 def test_run_case_audit_attribution_skips_when_all_audits_pass(tmp_path: Path) -> None:
@@ -21,7 +21,7 @@ def test_run_case_audit_attribution_skips_when_all_audits_pass(tmp_path: Path) -
                 "outline_passed": True,
                 "story_passed": True,
                 "image_design_passed": True,
-                "image_consistant_passed": True,
+                "image_consistency_passed": True,
                 "image_fact_passed": True,
             },
         },
@@ -51,13 +51,13 @@ def test_run_case_audit_attribution_calls_model_when_any_audit_fails(
                 "outline_passed": False,
                 "story_passed": True,
                 "image_design_passed": True,
-                "image_consistant_passed": False,
+                "image_consistency_passed": False,
                 "image_fact_passed": True,
             },
         },
     )
     _write_json(case_dir / "outline_hard_rule_compare.json", {"overall_passed": False, "field_results": {"outcome": {"passed": False}}})
-    _write_json(case_dir / "image_consistant_validation.json", {"is_passed": False, "issues": [{"issue_id": "1"}]})
+    _write_json(case_dir / "image_consistency_validation.json", {"is_passed": False, "issues": [{"issue_id": "1"}]})
     prompt_file = tmp_path / "prompts" / "audit_analysis.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text("请归因", encoding="utf-8")
@@ -93,10 +93,10 @@ def test_run_case_audit_attribution_calls_model_when_any_audit_fails(
     result = pipeline.run_case_audit_attribution(_dummy_llm_config(), "SM_TEST")
 
     assert result["status"] == "success"
-    assert result["failed_audits"] == ["outline_passed", "image_consistant_passed"]
+    assert result["failed_audits"] == ["outline_passed", "image_consistency_passed"]
     assert result["attribution"] == {"root_cause": "test"}
     assert "outline_passed" in captured["prompt"]
-    assert "image_consistant_passed" in captured["prompt"]
+    assert "image_consistency_passed" in captured["prompt"]
     assert "clinical baseline" in captured["prompt"]
     written = json.loads((case_dir / "audit_analysis.json").read_text(encoding="utf-8"))
     assert written["status"] == "success"

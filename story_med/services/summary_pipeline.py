@@ -128,14 +128,14 @@ def _merge_image_summary(case_dir: Path, summary: Dict[str, Any], audit_overview
             "summary": image_design.get("summary", ""),
         }
 
-    image_consistant_path = case_dir / "image_consistant_validation.json"
-    if image_consistant_path.exists():
-        image_consistant = _read_json(image_consistant_path)
-        audit_overview["image_consistant_passed"] = bool(image_consistant.get("is_passed"))
-        summary["image_consistant"] = {
-            "passed": bool(image_consistant.get("is_passed")),
-            "issue_count": len(image_consistant.get("issues") or []),
-            "summary": image_consistant.get("summary", ""),
+    image_consistency_path = case_dir / "image_consistency_validation.json"
+    if image_consistency_path.exists():
+        image_consistency = _read_json(image_consistency_path)
+        audit_overview["image_consistency_passed"] = bool(image_consistency.get("is_passed"))
+        summary["image_consistency"] = {
+            "passed": bool(image_consistency.get("is_passed")),
+            "issue_count": len(image_consistency.get("issues") or []),
+            "summary": image_consistency.get("summary", ""),
         }
 
     image_compare_path = case_dir / "image_fact_validation.json"
@@ -316,7 +316,7 @@ def _image_consistency_score(audit_overview: Dict[str, bool]) -> float:
     Returns:
         一致性得分。
     """
-    return IMAGE_CONSISTENCY_MAX_SCORE if audit_overview.get("image_consistant_passed", False) else 0.0
+    return IMAGE_CONSISTENCY_MAX_SCORE if audit_overview.get("image_consistency_passed", False) else 0.0
 
 
 def _image_fact_score(summary: Dict[str, Any]) -> float:

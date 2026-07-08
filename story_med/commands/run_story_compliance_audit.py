@@ -12,9 +12,9 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from story_med.config.llm_app_config import load_llm_config
-from story_med.services.case_loader import load_story_cases
 from story_med.services.story_compliance_pipeline import run_story_compliance_validation
 from story_med.services.summary_pipeline import refresh_case_summary
+from story_med.services.yaml_case_service import load_story_cases
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,9 +38,9 @@ def main() -> int:
         case = cases[case_id]
         result = run_story_compliance_validation(llm_config, case)
         summary = refresh_case_summary(case_id)
-        print(
+        sys.stdout.write(
             f"{case_id}: story_compliance={result.get('status')} "
-            f"passed={result.get('is_passed')} score={(summary.get('scorecard') or {}).get('total_score')}"
+            f"passed={result.get('is_passed')} score={(summary.get('scorecard') or {}).get('total_score')}\n"
         )
     return 0
 

@@ -14,8 +14,8 @@ if str(ROOT_DIR) not in sys.path:
 
 from story_med.config.app_config import load_app_config
 from story_med.config.llm_app_config import load_llm_config
-from story_med.services.edit_dialogue_config import load_edit_dialogue_cases
 from story_med.services.edit_dialogue_pipeline import run_edit_dialogue_case
+from story_med.services.yaml_case_service import load_edit_dialogue_cases
 
 
 def build_parser() -> argparse.ArgumentParser:

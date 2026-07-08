@@ -8,8 +8,8 @@ from story_med.utils import artifact_cleaner
 from story_med.utils.artifact_cleaner import should_clear_evaluation_artifacts, target_case_ids_for_cleanup
 
 
-def test_should_clear_evaluation_artifacts_for_full_pipeline_all_cases() -> None:
-    """验证全量生成运行会清空历史产物。"""
+def test_should_clear_evaluation_artifacts_for_image_case_pipeline_all_cases() -> None:
+    """验证全量图片病例生成运行会清空历史产物。"""
     env = {
         "STORY_MED_RUN_DEEPEVAL_PIPELINE": "true",
         "STORY_MED_DEEPEVAL_MODE": "image_case_pipeline",

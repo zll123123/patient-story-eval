@@ -34,7 +34,7 @@ def test_run_story_compliance_validation_writes_result(
     monkeypatch.setattr(pipeline, "RESULTS_DIR", tmp_path / "results")
     monkeypatch.setattr(pipeline, "TMP_DIR", tmp_path / "tmp")
     monkeypatch.setattr(pipeline, "STORY_COMPLIANCE_PROMPT_FILE", prompt_file)
-    monkeypatch.setattr("story_med.services.clinical_baseline.RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr("story_med.services.clinical_extract_baseline_service.RESULTS_DIR", tmp_path / "results")
     monkeypatch.setattr(
         pipeline,
         "call_llm_json",

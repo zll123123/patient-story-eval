@@ -160,14 +160,14 @@ class ImageConsistencyMetric(_PatientStoryBaseMetric):
         return float(_breakdown_score(summary, "image_consistency_score"))
 
     def _success(self, summary: Dict[str, Any]) -> bool:
-        return bool(_audit_value(summary, "image_consistant_passed"))
+        return bool(_audit_value(summary, "image_consistency_passed"))
 
     def _reason(self, summary: Dict[str, Any]) -> str:
-        image_consistant = summary.get("image_consistant") or {}
-        return f"{image_consistant.get('summary') or '图片一致性审核无结果'}，得分 {self.score}。"
+        image_consistency = summary.get("image_consistency") or {}
+        return f"{image_consistency.get('summary') or '图片一致性审核无结果'}，得分 {self.score}。"
 
     def _breakdown(self, summary: Dict[str, Any]) -> Dict[str, Any]:
-        return summary.get("image_consistant") or {}
+        return summary.get("image_consistency") or {}
 
 
 class ImageFactMetric(_PatientStoryBaseMetric):

@@ -1,4 +1,4 @@
-"""患者故事审核结果归因流水线。"""
+"""患者故事审核结果归因服务。"""
 
 from __future__ import annotations
 
@@ -8,10 +8,10 @@ from typing import Any, Dict, List
 
 from story_med.clients.llm_client import call_llm_json
 from story_med.config.llm_app_config import StoryMedLlmConfig
-from story_med.config.settings import RESULTS_DIR, PROMPTS_DIR, TMP_DIR
-from story_med.services.clinical_baseline import load_clinical_baseline
-from story_med.services.case_loader import get_story_case
+from story_med.config.settings import PROMPTS_DIR, RESULTS_DIR, TMP_DIR
+from story_med.services.clinical_extract_baseline_service import load_clinical_baseline
 from story_med.services.summary_pipeline import refresh_case_summary
+from story_med.services.yaml_case_service import get_story_case
 
 ATTRIBUTION_PROMPT_FILE = PROMPTS_DIR / "audit_analysis.md"
 
@@ -19,20 +19,16 @@ ATTRIBUTION_PROMPT_FILE = PROMPTS_DIR / "audit_analysis.md"
 def run_case_audit_attribution(llm_config: StoryMedLlmConfig, case_id: str) -> Dict[str, Any]:
     """按 case 执行审核归因，仅在存在失败审核项时触发。"""
     case_dir = TMP_DIR / case_id
-    # 归因前先刷新 summary，确保 audit_overview 已合并最新审核结果，
-    # 避免读取到仅包含 outline/story 的旧 summary 而被误判为 skipped。
     summary = refresh_case_summary(case_id)
     failed_audits = _failed_audit_keys(summary.get("audit_overview"))
     if not failed_audits:
         result = _skip_result(case_id)
         _write_json(result, case_dir / "audit_analysis.json")
         return result
-
     if not ATTRIBUTION_PROMPT_FILE.exists():
         result = _pending_result(case_id, failed_audits)
         _write_json(result, case_dir / "audit_analysis.json")
         return result
-
     payload = _build_payload(case_dir, summary, failed_audits)
     result = call_llm_json(llm_config, _build_prompt(payload))
     output = {
@@ -68,7 +64,7 @@ def _build_payload(case_dir: Path, summary: Dict[str, Any], failed_audits: List[
         "story_passed": "story_hard_rule_compare.json",
         "story_compliance_passed": "story_compliance_validation.json",
         "image_design_passed": "image_design_validation.json",
-        "image_consistant_passed": "image_consistant_validation.json",
+        "image_consistency_passed": "image_consistency_validation.json",
         "image_fact_passed": "image_fact_validation.json",
         "final_image_layout_passed": "final_image_layout_validation.json",
     }
@@ -84,15 +80,15 @@ def _build_payload(case_dir: Path, summary: Dict[str, Any], failed_audits: List[
     return payload
 
 
+def _load_case(case_id: str):
+    """加载指定 case 配置。"""
+    return get_story_case(case_id)
+
+
 def _build_prompt(payload: Dict[str, Any]) -> str:
     """拼接审核归因 prompt 与输入。"""
     template = ATTRIBUTION_PROMPT_FILE.read_text(encoding="utf-8")
     return f"{template}\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
-
-
-def _load_case(case_id: str):
-    """加载指定 case 配置。"""
-    return get_story_case(case_id)
 
 
 def _load_intermediate_outputs(case_id: str, session_id: str) -> Dict[str, Any]:
@@ -102,14 +98,8 @@ def _load_intermediate_outputs(case_id: str, session_id: str) -> Dict[str, Any]:
     asset_dir = RESULTS_DIR / "assets" / case_id / session_id
     output: Dict[str, Any] = {}
     case_parse_path = _first_existing_path(asset_dir, ["case_parse/case_parse.md"])
-    outline_path = _first_existing_path(
-        asset_dir,
-        ["generate_outline/outline.md", "generate_outline/generate_outline_1_outline.md"],
-    )
-    story_path = _first_existing_path(
-        asset_dir,
-        ["generate_story/story.md", "generate_story/generate_story_1_story.md"],
-    )
+    outline_path = _first_existing_path(asset_dir, ["generate_outline/outline.md", "generate_outline/generate_outline_1_outline.md"])
+    story_path = _first_existing_path(asset_dir, ["generate_story/story.md", "generate_story/generate_story_1_story.md"])
     image_design_path = _first_existing_path(
         asset_dir,
         ["generate_images/image_design.json", "generate_images/generate_images_6_image_design.json"],

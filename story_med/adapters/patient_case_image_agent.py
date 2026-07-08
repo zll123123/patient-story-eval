@@ -31,7 +31,7 @@ from story_med.config.app_config import StoryMedConfig
 from story_med.config.settings import ASSETS_DIR, TMP_DIR
 from story_med.models.case_model import StoryAgentRunResult, StoryCaseConfig, StoryStepResult
 from story_med.services.case_image_input import list_case_images_by_path
-from story_med.services.clinical_case_config import normalize_case_parse_text
+from story_med.services.case_parse_service import normalize_case_parse_text
 
 HISTORY_POLL_TIMEOUT_SECONDS = 600
 HISTORY_POLL_INTERVAL_SECONDS = 10

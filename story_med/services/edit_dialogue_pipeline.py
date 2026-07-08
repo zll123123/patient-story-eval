@@ -10,8 +10,7 @@ from story_med.config.app_config import StoryMedConfig
 from story_med.config.llm_app_config import StoryMedLlmConfig
 from story_med.config.settings import EDIT_DIALOGUE_RESULTS_DIR
 from story_med.services.edit_dialogue_attribution_pipeline import run_edit_dialogue_attribution
-from story_med.services.edit_dialogue_config import get_edit_dialogue_case
-from story_med.services.edit_story_pipeline import (
+from story_med.services.edit_coverage_service import (
     evaluate_edit_coverage,
     read_adjusted_content,
     read_reference_content,
@@ -19,6 +18,7 @@ from story_med.services.edit_story_pipeline import (
     resolve_reference_context,
 )
 from story_med.services.story_adjustment_pipeline import run_story_adjustment
+from story_med.services.yaml_case_service import get_edit_dialogue_case
 
 
 def run_edit_dialogue_case(

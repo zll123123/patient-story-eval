@@ -62,7 +62,7 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
             "issues": [{"issue_id": "privacy_leak"}],
         },
     )
-    _write_json(case_dir / "image_consistant_validation.json", {"is_passed": False, "summary": "bad", "issues": [{"issue_id": "1"}]})
+    _write_json(case_dir / "image_consistency_validation.json", {"is_passed": False, "summary": "bad", "issues": [{"issue_id": "1"}]})
     _write_json(
         case_dir / "image_fact_validation.json",
         {
@@ -112,7 +112,7 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
         "story_passed": True,
         "story_compliance_passed": False,
         "image_design_passed": True,
-        "image_consistant_passed": False,
+        "image_consistency_passed": False,
         "image_fact_passed": False,
         "final_image_layout_passed": False,
     }
@@ -121,7 +121,7 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
     assert result["story_compliance"]["issue_count"] == 1
     assert result["image_design"]["passed"] is True
     assert result["image_design"]["total_count"] == 2
-    assert result["image_consistant"]["issue_count"] == 1
+    assert result["image_consistency"]["issue_count"] == 1
     assert result["image_fact"]["failed_illustration_ids"] == [1]
     assert result["final_image_layout"]["issue_count"] == 1
     assert result["scorecard"]["gate_passed"] is False

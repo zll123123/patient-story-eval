@@ -17,10 +17,10 @@ ROOT_DIR = Path("/Users/layla.zhang/workspace/patient-story-eval")
 CASE_FILE = ROOT_DIR / "story_med/data/story_cases.md"
 TMP_DIR = ROOT_DIR / "story_med/results/temp"
 REPORT_DIR = ROOT_DIR / "story_med/results/reports"
-HTML_REPORT = REPORT_DIR / "patient_story_agent_audit_report_2026-06-24.html"
-DOCX_REPORT = REPORT_DIR / "patient_story_agent_audit_report_2026-06-24.docx"
-SUMMARY_HTML_REPORT = REPORT_DIR / "patient_story_agent_audit_report_summary_2026-06-24.html"
-SUMMARY_DOCX_REPORT = REPORT_DIR / "patient_story_agent_audit_report_summary_2026-06-24.docx"
+HTML_REPORT = REPORT_DIR / "patient_story_audit_report_2026-06-24.html"
+DOCX_REPORT = REPORT_DIR / "patient_story_audit_report_2026-06-24.docx"
+SUMMARY_HTML_REPORT = REPORT_DIR / "patient_story_audit_report_summary_2026-06-24.html"
+SUMMARY_DOCX_REPORT = REPORT_DIR / "patient_story_audit_report_summary_2026-06-24.docx"
 
 
 @dataclass(frozen=True)
@@ -122,7 +122,7 @@ def render_metric_section() -> str:
         </ul>
       </li>
     </ol>
-    <p>当前审核链路对应的核心判断项为：<code>outline_passed</code>、<code>story_passed</code>、<code>image_design_passed</code>、<code>image_consistant_passed</code>、<code>image_fact_passed</code>、<code>final_image_layout_passed</code>。</p>
+    <p>当前审核链路对应的核心判断项为：<code>outline_passed</code>、<code>story_passed</code>、<code>image_design_passed</code>、<code>image_consistency_passed</code>、<code>image_fact_passed</code>、<code>final_image_layout_passed</code>。</p>
     """
 
 
@@ -210,7 +210,7 @@ def render_category_examples(case_blocks: Dict[str, str]) -> str:
             attribution = load_json(TMP_DIR / case_id / "audit_analysis.json")
             layout_detail = summary.get("final_image_layout_detail") or {}
             image_design = summary.get("image_design") or {}
-            image_consistent = summary.get("image_consistant") or {}
+            image_consistent = summary.get("image_consistency") or {}
             root_causes = ((attribution.get("attribution") or {}).get("root_causes") or [])
             parts.append(f"<h4>{escape(case_id)} | {escape(summary.get('description', ''))}</h4>")
             parts.append(
@@ -252,7 +252,7 @@ def render_conclusion() -> str:
     <h2>五、阶段性结论</h2>
     <ul>
       <li>当前最稳定的文本节点是 Outline / Story 的基础事实抽取，但仍会在特定案例中出现医学常识错误、遗漏限定词和合规表达失真。</li>
-      <li>当前最不稳定的节点是图片相关链路，尤其是 <code>image_consistant_passed</code> 与 <code>image_fact_passed</code>，表现为角色锚点缺失和成图渲染偏差。</li>
+      <li>当前最不稳定的节点是图片相关链路，尤其是 <code>image_consistency_passed</code> 与 <code>image_fact_passed</code>，表现为角色锚点缺失和成图渲染偏差。</li>
       <li>长图生成存在系统性结构问题：一类是结构缺失（如 SM_008），另一类是反复出现多余“专家点评”板块（如 SM_014、SM_020、SM_021、SM_022）。</li>
       <li>从归因角度看，问题主要集中在故事大纲问题、图片设计问题、成图问题，以及一图读懂生成问题四类节点。</li>
     </ul>

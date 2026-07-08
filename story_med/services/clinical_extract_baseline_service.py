@@ -1,4 +1,4 @@
-"""临床病例评估基准读取服务。"""
+"""clinical_extract 基线读取服务。"""
 
 from __future__ import annotations
 
@@ -9,14 +9,7 @@ from story_med.models.case_model import StoryCaseConfig
 
 
 def load_clinical_baseline(case: StoryCaseConfig) -> str:
-    """读取独立病例提取结果作为评估基准。
-
-    Args:
-        case: 测试用例配置。
-
-    Returns:
-        病例评估基准文本。
-    """
+    """读取独立病例提取结果作为评估基准。"""
     if not case.image_dir.strip():
         raise ValueError(f"case 未配置 image_dir，无法读取 clinical_extract.md: {case.case_id}")
     path = clinical_baseline_path(case)

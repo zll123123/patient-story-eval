@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 
 from story_med.config.llm_app_config import StoryMedLlmConfig
 from story_med.config.settings import EDIT_DIALOGUE_RESULTS_DIR
-from story_med.services.edit_story_pipeline import evaluate_edit_coverage, read_reference_content
+from story_med.services.edit_coverage_service import evaluate_edit_coverage, read_reference_content
 
 EDIT_AUDIT_ANALYSIS_FILE = "edit_audit_analysis.json"
 
