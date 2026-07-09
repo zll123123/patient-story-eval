@@ -55,18 +55,18 @@ def test_clear_case_evaluation_artifacts_removes_single_case_directories(
     tmp_path: Path,
 ) -> None:
     """验证单病例重跑前会清理该病例所有历史目录。"""
-    monkeypatch.setattr(artifact_cleaner, "TMP_DIR", tmp_path / "temp")
+    monkeypatch.setattr(artifact_cleaner, "STORY_AUDITS_DIR", tmp_path / "temp")
     monkeypatch.setattr(artifact_cleaner, "ASSETS_DIR", tmp_path / "assets")
-    monkeypatch.setattr(artifact_cleaner, "RESULTS_DIR", tmp_path / "results")
-    monkeypatch.setattr(artifact_cleaner, "EDIT_RESULTS_DIR", tmp_path / "edit")
-    monkeypatch.setattr(artifact_cleaner, "EDIT_DIALOGUE_RESULTS_DIR", tmp_path / "edit_dialogue")
+    monkeypatch.setattr(artifact_cleaner, "GENERATION_RUNS_DIR", tmp_path / "results" / "generation_runs")
+    monkeypatch.setattr(artifact_cleaner, "EDIT_RUNS_DIR", tmp_path / "edit")
+    monkeypatch.setattr(artifact_cleaner, "EDIT_AUDITS_DIR", tmp_path / "edit_dialogue")
     case_id = "SM_002"
     targets = [
-        artifact_cleaner.TMP_DIR / case_id,
+        artifact_cleaner.STORY_AUDITS_DIR / case_id,
         artifact_cleaner.ASSETS_DIR / case_id,
-        artifact_cleaner.RESULTS_DIR / "runs" / case_id,
-        artifact_cleaner.EDIT_RESULTS_DIR / case_id,
-        artifact_cleaner.EDIT_DIALOGUE_RESULTS_DIR / case_id,
+        artifact_cleaner.GENERATION_RUNS_DIR / case_id,
+        artifact_cleaner.EDIT_RUNS_DIR / case_id,
+        artifact_cleaner.EDIT_AUDITS_DIR / case_id,
     ]
     for path in targets:
         path.mkdir(parents=True, exist_ok=True)

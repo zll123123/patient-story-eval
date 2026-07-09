@@ -8,13 +8,13 @@ from typing import List
 
 import pytest
 
-from story_med.services.patient_story_deepeval_pipeline import run_single_case, _selected_cases, _eval_mode, _include_visual_steps, _run_attribution, _target_case_ids
-from story_med.config.llm_app_config import load_llm_config
+from story_med.services.story_generation_evaluation.patient_story_deepeval_pipeline import run_single_case, _selected_cases, _eval_mode, _include_visual_steps, _run_attribution, _target_case_ids
+from story_med.config.app_config import load_llm_config
 from story_med.config.app_config import load_app_config
-from story_med.config.vision_app_config import load_vision_config
+from story_med.config.app_config import load_vision_config
 from story_med.config.settings import DEFAULT_CONFIG_FILE
-from story_med.services.yaml_case_service import load_story_cases
-from story_med.adapters.patient_case_image_agent import PatientCaseImageAgentAdapter
+from story_med.services.clinical_case_preparation.yaml_case_service import load_story_cases
+from story_med.executors.patient_story_generation_executor import PatientStoryGenerationExecutor
 from story_med.evals.patient_story_deepeval_metrics import build_patient_story_metrics
 from deepeval import assert_test
 from deepeval.test_case.llm_test_case import LLMTestCase
@@ -46,7 +46,7 @@ def test_patient_story_deepeval_pipeline(case_id: str) -> None:
     llm_config = load_llm_config()
     vision_config = load_vision_config()
     app_config = load_app_config(DEFAULT_CONFIG_FILE)
-    image_adapter = PatientCaseImageAgentAdapter(app_config)
+    image_adapter = PatientStoryGenerationExecutor(app_config)
     result = run_single_case(
         image_adapter=image_adapter,
         llm_config=llm_config,

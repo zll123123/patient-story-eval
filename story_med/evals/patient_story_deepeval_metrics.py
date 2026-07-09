@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from deepeval.metrics.base_metric import BaseMetric
 from deepeval.test_case.llm_test_case import LLMTestCase
 
-from story_med.config.settings import TMP_DIR
+from story_med.config.settings import STORY_AUDITS_DIR
 
 
 class _PatientStoryBaseMetric(BaseMetric):
@@ -263,7 +263,7 @@ def build_patient_story_metrics() -> List[BaseMetric]:
 
 def _load_summary(case_id: str) -> Dict[str, Any]:
     """加载指定 case 的 summary。"""
-    summary_path = TMP_DIR / case_id / "summary.json"
+    summary_path = STORY_AUDITS_DIR / case_id / "summary.json"
     if not summary_path.exists():
         return {}
     try:

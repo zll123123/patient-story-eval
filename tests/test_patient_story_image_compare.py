@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from story_med.config.vision_app_config import load_vision_config
-from story_med.services.yaml_case_service import load_story_cases
-from story_med.services.image_audit_pipeline import (
+from story_med.config.app_config import load_vision_config
+from story_med.services.clinical_case_preparation.yaml_case_service import load_story_cases
+from story_med.services.story_generation_evaluation.image_audit_pipeline import (
     _build_success_report,
     run_case_latest_image_audit,
     run_latest_image_audit,
@@ -55,7 +55,7 @@ def test_seed_cases_latest_images_compare() -> None:
 def test_build_success_report_writes_image_design_validation_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """验证图片设计审核结果单独落盘并参与总通过判断。"""
     from story_med.models.case_model import StoryCaseConfig
-    from story_med.services import image_audit_pipeline as pipeline
+    from story_med.services.story_generation_evaluation import image_audit_pipeline as pipeline
 
     case = StoryCaseConfig(
         case_id="SM_TEST",
@@ -76,7 +76,7 @@ def test_build_success_report_writes_image_design_validation_file(monkeypatch: p
     (asset_dir / "generate_final_image" / "generate_final_image_1_index.png").write_text("x", encoding="utf-8")
 
     monkeypatch.setattr(pipeline, "RESULTS_DIR", tmp_path / "assets_root")
-    monkeypatch.setattr(pipeline, "TMP_DIR", tmp_path / "tmp")
+    monkeypatch.setattr(pipeline, "STORY_AUDITS_DIR", tmp_path / "tmp")
     monkeypatch.setattr(pipeline, "_read_image_design", lambda _: {"illustrations": [{"id": 1, "image_path": "a.png"}]})
     monkeypatch.setattr(pipeline, "_build_consistency_images_payload", lambda asset_dir, image_design: [{"local_path": "dummy.png"}])
     monkeypatch.setattr(
@@ -120,7 +120,7 @@ def test_build_success_report_writes_image_design_validation_file(monkeypatch: p
 def test_build_success_report_writes_image_consistency_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """验证图片一致性审核结果单独落盘。"""
     from story_med.models.case_model import StoryCaseConfig
-    from story_med.services import image_audit_pipeline as pipeline
+    from story_med.services.story_generation_evaluation import image_audit_pipeline as pipeline
 
     case = StoryCaseConfig(
         case_id="SM_TEST",
@@ -131,7 +131,7 @@ def test_build_success_report_writes_image_consistency_file(monkeypatch: pytest.
     )
 
     monkeypatch.setattr(pipeline, "RESULTS_DIR", tmp_path / "assets_root")
-    monkeypatch.setattr(pipeline, "TMP_DIR", tmp_path / "tmp")
+    monkeypatch.setattr(pipeline, "STORY_AUDITS_DIR", tmp_path / "tmp")
     monkeypatch.setattr(pipeline, "_read_image_design", lambda _: {"illustrations": [{"id": 1, "image_path": "a.png"}]})
     monkeypatch.setattr(pipeline, "_build_consistency_images_payload", lambda asset_dir, image_design: [{"local_path": "dummy.png"}])
     monkeypatch.setattr(pipeline, "_validate_image_design", lambda case, asset_dir, image_design: {"is_passed": True, "summary": "ok", "issues": []})
@@ -171,7 +171,7 @@ def test_build_success_report_writes_image_consistency_file(monkeypatch: pytest.
 def test_build_success_report_writes_final_image_layout_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """验证最终长图结构审核结果单独落盘。"""
     from story_med.models.case_model import StoryCaseConfig
-    from story_med.services import image_audit_pipeline as pipeline
+    from story_med.services.story_generation_evaluation import image_audit_pipeline as pipeline
 
     case = StoryCaseConfig(
         case_id="SM_TEST",
@@ -182,7 +182,7 @@ def test_build_success_report_writes_final_image_layout_file(monkeypatch: pytest
     )
 
     monkeypatch.setattr(pipeline, "RESULTS_DIR", tmp_path / "assets_root")
-    monkeypatch.setattr(pipeline, "TMP_DIR", tmp_path / "tmp")
+    monkeypatch.setattr(pipeline, "STORY_AUDITS_DIR", tmp_path / "tmp")
     monkeypatch.setattr(pipeline, "_read_image_design", lambda _: {"illustrations": [{"id": 1, "image_path": "a.png"}]})
     monkeypatch.setattr(pipeline, "_build_consistency_images_payload", lambda asset_dir, image_design: [{"local_path": "dummy.png"}])
     monkeypatch.setattr(pipeline, "_validate_image_design", lambda case, asset_dir, image_design: {"is_passed": True, "summary": "ok", "issues": []})
@@ -220,7 +220,7 @@ def test_build_success_report_writes_final_image_layout_file(monkeypatch: pytest
 def test_validate_final_image_layout_uses_original_image(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """验证最终长图审核走原图直传，不走缩略图。"""
     from story_med.models.case_model import StoryCaseConfig
-    from story_med.services import final_image_layout_audit_service as pipeline
+    from story_med.services.story_generation_evaluation import final_image_layout_audit_service as pipeline
 
     case = StoryCaseConfig(
         case_id="SM_TEST",
@@ -240,7 +240,10 @@ def test_validate_final_image_layout_uses_original_image(monkeypatch: pytest.Mon
     captured: dict = {}
 
     monkeypatch.setattr(pipeline, "PROMPTS_DIR", tmp_path)
-    monkeypatch.setattr("story_med.services.clinical_extract_baseline_service.RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(
+        "story_med.services.clinical_case_preparation.clinical_extract_baseline_service.BASELINES_DIR",
+        tmp_path / "baselines",
+    )
     monkeypatch.setattr(pipeline, "_find_single_image", lambda _: asset_dir / "generate_final_image" / "final.png")
     monkeypatch.setattr(
         pipeline,
@@ -263,7 +266,7 @@ def test_validate_final_image_layout_uses_original_image(monkeypatch: pytest.Mon
 def test_build_image_prompt_only_uses_patient_case_and_images(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """验证单张图片事实审核不再注入图片设计细节。"""
     from story_med.models.case_model import StoryCaseConfig
-    from story_med.services import image_audit_pipeline as pipeline
+    from story_med.services.story_generation_evaluation import image_audit_pipeline as pipeline
 
     case = StoryCaseConfig(
         case_id="SM_TEST",
@@ -274,7 +277,10 @@ def test_build_image_prompt_only_uses_patient_case_and_images(monkeypatch: pytes
         hard_rules={},
     )
     _write_clinical_baseline(tmp_path, "case-images", "clinical baseline")
-    monkeypatch.setattr("story_med.services.clinical_extract_baseline_service.RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(
+        "story_med.services.clinical_case_preparation.clinical_extract_baseline_service.BASELINES_DIR",
+        tmp_path / "baselines",
+    )
     prompt = pipeline._build_image_prompt(
         case,
         {
@@ -296,7 +302,7 @@ def test_build_image_prompt_only_uses_patient_case_and_images(monkeypatch: pytes
 def test_compare_final_image_only_uses_patient_case_and_images(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """验证最终长图事实审核不再注入 image_design。"""
     from story_med.models.case_model import StoryCaseConfig
-    from story_med.services import image_audit_pipeline as pipeline
+    from story_med.services.story_generation_evaluation import image_audit_pipeline as pipeline
 
     case = StoryCaseConfig(
         case_id="SM_TEST",
@@ -313,7 +319,10 @@ def test_compare_final_image_only_uses_patient_case_and_images(monkeypatch: pyte
     final_path.write_text("x", encoding="utf-8")
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr("story_med.services.clinical_extract_baseline_service.RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(
+        "story_med.services.clinical_case_preparation.clinical_extract_baseline_service.BASELINES_DIR",
+        tmp_path / "baselines",
+    )
     monkeypatch.setattr(pipeline, "_find_single_image", lambda _: final_path)
     monkeypatch.setattr(
         pipeline,
@@ -339,13 +348,13 @@ def test_compare_final_image_only_uses_patient_case_and_images(monkeypatch: pyte
 def test_build_image_prompt_prefers_clinical_extract(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """验证图片事实审核优先使用 clinical_extract.md 作为病例基准。"""
     from story_med.models.case_model import StoryCaseConfig
-    from story_med.services import clinical_extract_baseline_service as clinical_baseline
-    from story_med.services import image_audit_pipeline as pipeline
+    from story_med.services.clinical_case_preparation import clinical_extract_baseline_service as clinical_baseline
+    from story_med.services.story_generation_evaluation import image_audit_pipeline as pipeline
 
-    baseline_file = tmp_path / "output" / "case-images" / "clinical_extract.md"
+    baseline_file = tmp_path / "baselines" / "case-images" / "clinical_extract.md"
     baseline_file.parent.mkdir(parents=True)
     baseline_file.write_text("clinical baseline", encoding="utf-8")
-    monkeypatch.setattr(clinical_baseline, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(clinical_baseline, "BASELINES_DIR", tmp_path / "baselines")
 
     case = StoryCaseConfig(
         case_id="SM_TEST",
@@ -363,6 +372,6 @@ def test_build_image_prompt_prefers_clinical_extract(monkeypatch: pytest.MonkeyP
 
 def _write_clinical_baseline(tmp_path: Path, image_dir: str, content: str) -> None:
     """写入测试用病例基准文件。"""
-    baseline_file = tmp_path / "output" / image_dir / "clinical_extract.md"
+    baseline_file = tmp_path / "baselines" / image_dir / "clinical_extract.md"
     baseline_file.parent.mkdir(parents=True, exist_ok=True)
     baseline_file.write_text(content, encoding="utf-8")

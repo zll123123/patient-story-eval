@@ -13,9 +13,9 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from story_med.config.app_config import load_app_config
-from story_med.config.llm_app_config import load_llm_config
-from story_med.services.edit_dialogue_pipeline import run_edit_dialogue_case
-from story_med.services.yaml_case_service import load_edit_dialogue_cases
+from story_med.config.app_config import load_llm_config
+from story_med.services.story_edit_evaluation.edit_dialogue_pipeline import run_edit_dialogue_case
+from story_med.services.clinical_case_preparation.yaml_case_service import load_edit_dialogue_cases
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,13 +30,13 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     """执行患者故事多轮编辑对话测试。
 
     Returns:
         进程退出码。
     """
-    args = build_parser().parse_args()
+    args = build_parser().parse_args(argv)
     case_ids = _resolve_case_ids(args.case_id, args.case_ids)
     app_config = load_app_config()
     llm_config = load_llm_config()

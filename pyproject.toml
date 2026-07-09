@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "patient-story-eval"
+version = "0.1.0"
+description = "患者故事生成、审核与编辑评测工具"
+readme = "story_med/README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "loguru",
+  "PyYAML",
+  "requests",
+  "Pillow",
+]
+
+[project.optional-dependencies]
+eval = [
+  "deepeval",
+  "pytest",
+]
+
+[project.scripts]
+story-med = "story_med.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["story_med"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-q"

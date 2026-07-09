@@ -15,7 +15,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 ROOT_DIR = Path("/Users/layla.zhang/workspace/patient-story-eval")
 CASE_FILE = ROOT_DIR / "story_med/data/story_cases.md"
-TMP_DIR = ROOT_DIR / "story_med/results/temp"
+STORY_AUDITS_DIR = ROOT_DIR / "story_med/results/story_audits"
 REPORT_DIR = ROOT_DIR / "story_med/results/reports"
 HTML_REPORT = REPORT_DIR / "patient_story_audit_report_2026-06-24.html"
 DOCX_REPORT = REPORT_DIR / "patient_story_audit_report_2026-06-24.docx"
@@ -62,14 +62,14 @@ def load_json(path: Path) -> Dict[str, Any]:
 
 def list_case_ids() -> List[str]:
     """列出已有 summary 的 case_id。"""
-    return sorted(path.name for path in TMP_DIR.glob("SM_*") if path.is_dir())
+    return sorted(path.name for path in STORY_AUDITS_DIR.glob("SM_*") if path.is_dir())
 
 
 def summarize_failures(case_ids: Iterable[str]) -> Dict[str, List[str]]:
     """按失败审核项聚合 case。"""
     grouped: Dict[str, List[str]] = defaultdict(list)
     for case_id in case_ids:
-        summary = load_json(TMP_DIR / case_id / "summary.json")
+        summary = load_json(STORY_AUDITS_DIR / case_id / "summary.json")
         for key, value in (summary.get("audit_overview") or {}).items():
             if value is False:
                 grouped[key].append(case_id)
@@ -80,7 +80,7 @@ def score_table_rows(case_ids: Iterable[str]) -> List[Dict[str, Any]]:
     """构造全量分数表。"""
     rows: List[Dict[str, Any]] = []
     for case_id in case_ids:
-        summary = load_json(TMP_DIR / case_id / "summary.json")
+        summary = load_json(STORY_AUDITS_DIR / case_id / "summary.json")
         rows.append(
             {
                 "case_id": case_id,
@@ -206,8 +206,8 @@ def render_category_examples(case_blocks: Dict[str, str]) -> str:
         parts.append(f"<h3>{escape(category.title)}</h3>")
         parts.append(f"<p>{escape(category.description)}</p>")
         for case_id in category.case_ids:
-            summary = load_json(TMP_DIR / case_id / "summary.json")
-            attribution = load_json(TMP_DIR / case_id / "audit_analysis.json")
+            summary = load_json(STORY_AUDITS_DIR / case_id / "summary.json")
+            attribution = load_json(STORY_AUDITS_DIR / case_id / "audit_analysis.json")
             layout_detail = summary.get("final_image_layout_detail") or {}
             image_design = summary.get("image_design") or {}
             image_consistent = summary.get("image_consistency") or {}
@@ -272,8 +272,8 @@ def render_summary_html(case_blocks: Dict[str, str]) -> str:
     representative_cases = ["SM_008", "SM_014", "SM_020", "SM_021", "SM_022", "SM_002"]
     case_cards: List[str] = []
     for case_id in representative_cases:
-        summary = load_json(TMP_DIR / case_id / "summary.json")
-        attribution = load_json(TMP_DIR / case_id / "audit_analysis.json")
+        summary = load_json(STORY_AUDITS_DIR / case_id / "summary.json")
+        attribution = load_json(STORY_AUDITS_DIR / case_id / "audit_analysis.json")
         layout_detail = summary.get("final_image_layout_detail") or {}
         card_parts = [
             f"<h3>{escape(case_id)} | {escape(summary.get('description', ''))}</h3>",

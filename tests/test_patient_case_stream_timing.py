@@ -7,7 +7,7 @@ from pathlib import Path
 
 from story_med.clients import agent_task_client
 from story_med.models.case_model import StoryAgentRunResult, StoryStepResult
-from story_med.services.hard_rule_llm_pipeline import _build_step_timings
+from story_med.services.story_generation_evaluation.hard_rule_llm_pipeline import _build_step_timings
 
 
 def test_write_stream_chunks_generates_event_log_and_step_timings(tmp_path: Path) -> None:

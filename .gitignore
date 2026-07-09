@@ -12,9 +12,14 @@ __pycache__/
 .venv/
 venv/
 env/
+.uv-cache/
 
 # Secrets
 .env
+.env.*
+*.env
+story_med/envs/*.env
+!story_med/envs/.env.example
 
 # Logs and outputs
 *.log
@@ -31,6 +36,5 @@ story_med/tmp/
 #img 
 */img
 
-#/output
+# legacy output
 */output
-

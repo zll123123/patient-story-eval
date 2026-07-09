@@ -76,9 +76,9 @@ def build_env(args: argparse.Namespace, defaults: dict) -> dict[str, str]:
     return env
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     """执行 DeepEval 评估。"""
-    args = build_parser().parse_args()
+    args = build_parser().parse_args(argv)
     defaults = load_deepeval_defaults()
     test_file = Path(str(defaults.get("test_file", "tests/test_patient_story_deepeval_pipeline.py")))
     identifier = args.identifier.strip() or str(defaults.get("identifier") or "").strip()

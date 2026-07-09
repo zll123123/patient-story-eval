@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from story_med.services.case_image_input import list_case_images, list_case_images_by_path
+from story_med.services.clinical_case_preparation.case_image_input import list_case_images, list_case_images_by_path
 
 
 def test_list_case_images_returns_sorted_supported_files(tmp_path: Path) -> None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from story_med.models.case_model import StoryCaseConfig
-from story_med.services import patient_story_deepeval_pipeline as pipeline
+from story_med.services.story_generation_evaluation import patient_story_deepeval_pipeline as pipeline
 
 
 def test_eval_mode_defaults_to_audit_only(monkeypatch: pytest.MonkeyPatch) -> None:

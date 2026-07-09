@@ -1,6 +1,0 @@
-deepeval
-loguru
-pytest
-PyYAML
-requests
-Pillow

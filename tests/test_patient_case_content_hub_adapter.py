@@ -1,4 +1,4 @@
-"""内容中台患者故事链路适配单元测试。"""
+"""内容中台患者故事链路执行单元测试。"""
 
 from __future__ import annotations
 
@@ -7,12 +7,14 @@ from typing import Any, Dict
 
 import pytest
 
-from story_med.adapters.patient_case_image_agent import PatientCaseImageAgentAdapter
-from story_med.adapters.patient_case_image_agent import (
-    _content_hub_task_from_create_response,
+from story_med.executors.patient_story_generation_executor import PatientStoryGenerationExecutor
+from story_med.executors.patient_story_generation_executor import (
     _case_generation_message,
-    _is_history_complete,
+)
+from story_med.executors.content_hub_history import (
+    content_hub_task_from_create_response,
     detect_content_hub_upstream_error,
+    is_generation_history_complete,
     normalize_content_hub_history,
 )
 from story_med.config.app_config import StoryMedConfig
@@ -30,7 +32,7 @@ def test_content_hub_create_response_extracts_task_and_session() -> None:
         },
     }
 
-    result = _content_hub_task_from_create_response(body)
+    result = content_hub_task_from_create_response(body)
 
     assert result["task_id"] == "task-1"
     assert result["remote_agent_task_id"] == "session-1"
@@ -101,7 +103,7 @@ def test_detect_content_hub_upstream_error_when_raw_status_error() -> None:
 
 def test_upload_presign_body_uses_filename_key(tmp_path: Path, monkeypatch: Any) -> None:
     """验证上传预签名接口使用中台要求的 filename 字段。"""
-    from story_med.clients.agent_task_client import create_story_med_upload_url
+    from story_med.clients.agent_api.agent_task_client import create_story_med_upload_url
     from story_med.config.app_config import StoryMedConfig
 
     captured: Dict[str, Any] = {}
@@ -130,7 +132,6 @@ def test_upload_presign_body_uses_filename_key(tmp_path: Path, monkeypatch: Any)
         timeout_seconds=60,
         verify_ssl=True,
         accept="application/json",
-        user_agent="pytest",
         origin="",
         referer="",
         adjust_base_url="https://hub.example",
@@ -152,7 +153,7 @@ def test_upload_presign_body_uses_filename_key(tmp_path: Path, monkeypatch: Any)
 
 def test_login_content_hub_updates_runtime_token(tmp_path: Path) -> None:
     """验证中台登录会刷新运行期 Authorization token。"""
-    from story_med.clients.agent_task_client import login_content_hub
+    from story_med.clients.agent_api.agent_task_client import login_content_hub
     from story_med.config.app_config import StoryMedConfig
 
     captured: Dict[str, Any] = {}
@@ -181,7 +182,6 @@ def test_login_content_hub_updates_runtime_token(tmp_path: Path) -> None:
         timeout_seconds=60,
         verify_ssl=True,
         accept="application/json",
-        user_agent="pytest",
         origin="",
         referer="",
         adjust_base_url="https://hub.example",
@@ -224,7 +224,7 @@ def test_is_history_complete_returns_true_when_core_artifacts_all_exist() -> Non
         }
     }
 
-    assert _is_history_complete(history) is True
+    assert is_generation_history_complete(history) is True
 
 
 def test_is_history_complete_returns_false_when_html_missing() -> None:
@@ -238,12 +238,12 @@ def test_is_history_complete_returns_false_when_html_missing() -> None:
         }
     }
 
-    assert _is_history_complete(history) is False
+    assert is_generation_history_complete(history) is False
 
 
 def test_wait_for_terminal_history_retries_until_complete(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """验证 stream 断开后会轮询 history 直到产物完整。"""
-    adapter = PatientCaseImageAgentAdapter(_build_config(tmp_path), session=object())
+    adapter = PatientStoryGenerationExecutor(_build_config(tmp_path), session=object())
     pending_body = _history_body(
         [
             _agent_frame(
@@ -279,10 +279,10 @@ def test_wait_for_terminal_history_retries_until_complete(monkeypatch: pytest.Mo
     calls: list[str] = []
 
     monkeypatch.setattr(
-        "story_med.adapters.patient_case_image_agent.get_agent_task_history",
+        "story_med.executors.content_hub_runtime.get_agent_task_history",
         lambda session, config, task_id: calls.append(task_id) or responses.pop(0),
     )
-    monkeypatch.setattr("story_med.adapters.patient_case_image_agent.sleep", lambda _seconds: None)
+    monkeypatch.setattr("story_med.executors.content_hub_runtime.sleep", lambda _seconds: None)
 
     result = adapter._wait_for_terminal_history("task-1")
 
@@ -307,7 +307,6 @@ def _build_config(tmp_path: Path) -> StoryMedConfig:
         timeout_seconds=1,
         verify_ssl=True,
         accept="application/json",
-        user_agent="pytest",
         origin="",
         referer="",
         adjust_base_url="https://hub.example",

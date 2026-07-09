@@ -7,7 +7,13 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 
-from story_med.config.settings import ASSETS_DIR, EDIT_DIALOGUE_RESULTS_DIR, EDIT_RESULTS_DIR, RESULTS_DIR, TMP_DIR
+from story_med.config.settings import (
+    ASSETS_DIR,
+    EDIT_AUDITS_DIR,
+    EDIT_RUNS_DIR,
+    GENERATION_RUNS_DIR,
+    STORY_AUDITS_DIR,
+)
 
 
 def should_clear_evaluation_artifacts(env: Mapping[str, str]) -> bool:
@@ -66,24 +72,24 @@ def clear_edit_case_artifacts(case_id: str) -> None:
     Args:
         case_id: 编辑测试用例 ID。
     """
-    for path in [EDIT_RESULTS_DIR / case_id, ASSETS_DIR / case_id]:
+    for path in [EDIT_RUNS_DIR / case_id, ASSETS_DIR / case_id]:
         if path.exists():
             shutil.rmtree(path)
 
 
 def _target_directories() -> list[Path]:
     """返回需要清理的目录列表。"""
-    return [TMP_DIR, ASSETS_DIR, RESULTS_DIR / "runs"]
+    return [STORY_AUDITS_DIR, ASSETS_DIR, GENERATION_RUNS_DIR]
 
 
 def _case_target_directories(case_id: str) -> list[Path]:
     """返回单个病例需要清理的目录列表。"""
     return [
-        TMP_DIR / case_id,
+        STORY_AUDITS_DIR / case_id,
         ASSETS_DIR / case_id,
-        RESULTS_DIR / "runs" / case_id,
-        EDIT_RESULTS_DIR / case_id,
-        EDIT_DIALOGUE_RESULTS_DIR / case_id,
+        GENERATION_RUNS_DIR / case_id,
+        EDIT_RUNS_DIR / case_id,
+        EDIT_AUDITS_DIR / case_id,
     ]
 
 

@@ -7,9 +7,9 @@ from typing import Any, Dict
 
 import pytest
 
-from story_med.clients.agent_task_client import build_adjustment_headers, build_adjustment_payload
+from story_med.clients.agent_api.agent_task_client import build_adjustment_headers, build_adjustment_payload
 from story_med.config.app_config import StoryMedConfig
-from story_med.services import story_adjustment_pipeline as pipeline
+from story_med.services.story_edit_evaluation import story_adjustment_pipeline as pipeline
 
 
 class FakeResponse:
@@ -63,7 +63,6 @@ def build_config() -> StoryMedConfig:
         timeout_seconds=1,
         verify_ssl=True,
         accept="application/json",
-        user_agent="pytest",
         origin="",
         referer="",
         adjust_base_url="https://adjust.example.com",
@@ -122,7 +121,7 @@ def test_run_story_adjustment_writes_stream_and_summary(
     tmp_path: Path,
 ) -> None:
     """验证调整节点会保存 SSE 原始流和摘要结果。"""
-    monkeypatch.setattr(pipeline, "EDIT_RESULTS_DIR", tmp_path / "edit")
+    monkeypatch.setattr(pipeline, "EDIT_RUNS_DIR", tmp_path / "edit")
     called = {}
     monkeypatch.setattr(pipeline, "clear_edit_case_artifacts", lambda case_id: called.setdefault("case_id", case_id))
     fake_session = FakeSession()
@@ -191,7 +190,7 @@ def test_run_story_adjustment_fails_without_task_completed(
     tmp_path: Path,
 ) -> None:
     """验证未命中 TASK_COMPLETED 时不应判定成功。"""
-    monkeypatch.setattr(pipeline, "EDIT_RESULTS_DIR", tmp_path / "edit")
+    monkeypatch.setattr(pipeline, "EDIT_RUNS_DIR", tmp_path / "edit")
     monkeypatch.setattr(pipeline, "clear_edit_case_artifacts", lambda _case_id: None)
 
     class NoCompleteResponse(FakeResponse):

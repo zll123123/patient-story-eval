@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from story_med.services import summary_pipeline as pipeline
+from story_med.services.story_generation_evaluation import summary_pipeline as pipeline
 
 
 def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
@@ -103,7 +103,7 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
         },
     )
 
-    pipeline.TMP_DIR = case_dir.parent  # type: ignore[assignment]
+    pipeline.STORY_AUDITS_DIR = case_dir.parent  # type: ignore[assignment]
     pipeline.RESULTS_DIR = tmp_path  # type: ignore[assignment]
     result = pipeline.refresh_case_summary("SM_TEST")
 
@@ -193,7 +193,7 @@ def test_refresh_case_summary_scores_image_design_from_design_total_when_image_f
         },
     )
 
-    pipeline.TMP_DIR = case_dir.parent  # type: ignore[assignment]
+    pipeline.STORY_AUDITS_DIR = case_dir.parent  # type: ignore[assignment]
     pipeline.RESULTS_DIR = tmp_path  # type: ignore[assignment]
     result = pipeline.refresh_case_summary("SM_TEST")
 

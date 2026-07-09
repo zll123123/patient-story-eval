@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from story_med.models.case_model import StoryAgentRunResult, StoryCaseConfig, StoryStepResult
-from story_med.services import hard_rule_llm_pipeline as pipeline
+from story_med.services.story_generation_evaluation import hard_rule_llm_pipeline as pipeline
 
 
 def test_build_summary_includes_agent_step_timings() -> None:

@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from story_med.models.case_model import StoryCaseConfig
-from story_med.services import story_compliance_pipeline as pipeline
+from story_med.services.story_generation_evaluation import story_compliance_pipeline as pipeline
 
 
 def test_run_story_compliance_validation_writes_result(
@@ -32,9 +32,12 @@ def test_run_story_compliance_validation_writes_result(
     captured: dict = {}
 
     monkeypatch.setattr(pipeline, "RESULTS_DIR", tmp_path / "results")
-    monkeypatch.setattr(pipeline, "TMP_DIR", tmp_path / "tmp")
+    monkeypatch.setattr(pipeline, "STORY_AUDITS_DIR", tmp_path / "tmp")
     monkeypatch.setattr(pipeline, "STORY_COMPLIANCE_PROMPT_FILE", prompt_file)
-    monkeypatch.setattr("story_med.services.clinical_extract_baseline_service.RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(
+        "story_med.services.clinical_case_preparation.clinical_extract_baseline_service.BASELINES_DIR",
+        tmp_path / "baselines",
+    )
     monkeypatch.setattr(
         pipeline,
         "call_llm_json",
@@ -60,7 +63,7 @@ def test_run_story_compliance_validation_blocks_when_missing_story(
     case = StoryCaseConfig(case_id="SM_TEST", description="test", creative_brief="", hard_rules={})
 
     monkeypatch.setattr(pipeline, "RESULTS_DIR", tmp_path / "results")
-    monkeypatch.setattr(pipeline, "TMP_DIR", tmp_path / "tmp")
+    monkeypatch.setattr(pipeline, "STORY_AUDITS_DIR", tmp_path / "tmp")
 
     result = pipeline.run_story_compliance_validation(object(), case)
 
@@ -71,7 +74,7 @@ def test_run_story_compliance_validation_blocks_when_missing_story(
 
 def _write_clinical_baseline(tmp_path: Path, image_dir: str, text: str) -> None:
     """写入测试用病例基准文件。"""
-    baseline_path = tmp_path / "output" / image_dir / "clinical_extract.md"
+    baseline_path = tmp_path / "baselines" / image_dir / "clinical_extract.md"
     baseline_path.parent.mkdir(parents=True)
     baseline_path.write_text(text, encoding="utf-8")
 

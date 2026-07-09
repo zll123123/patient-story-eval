@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from story_med.services.yaml_case_service import load_story_cases
+from story_med.services.clinical_case_preparation.yaml_case_service import load_story_cases
 
 
 def test_load_story_cases_prefers_case_parse(tmp_path: Path) -> None:

@@ -67,7 +67,7 @@
 运行方式：
 
 ```bash
-PYTHONPATH=. python3 -m pytest tests/test_hard_rule_validation.py -q
+uv run pytest tests/test_hard_rule_validation.py -q
 ```
 
 校验报告输出到：

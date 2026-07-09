@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from story_med.services import edit_coverage_service as service
+from story_med.services.story_edit_evaluation import edit_coverage_service as service
 
 
 class FakeLlmConfig:
@@ -100,11 +100,11 @@ def test_resolve_reference_context_uses_saved_content_hub_task_id(
 ) -> None:
     """验证编辑上下文优先复用运行结果中保存的 task_id。"""
     monkeypatch.setattr(service, "ASSETS_DIR", tmp_path / "assets")
-    monkeypatch.setattr(service, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(service, "GENERATION_RUNS_DIR", tmp_path / "results" / "generation_runs")
     _write_text(tmp_path / "assets/SM_001/session-1/generate_story/story.md", "story")
     _write_text(tmp_path / "assets/SM_001/session-1/generate_final_image/index.html", "html")
     _write_text(
-        tmp_path / "results/runs/SM_001/session-1.json",
+        tmp_path / "results/generation_runs/SM_001/session-1.json",
         '{"session_response":{"content_hub_task":{"task_id":"task-1"}}}',
     )
 
@@ -120,7 +120,7 @@ def test_write_edit_coverage_result_uses_expected_filename(
     tmp_path: Path,
 ) -> None:
     """验证编辑审核结果使用统一文件名落盘。"""
-    monkeypatch.setattr(service, "EDIT_RESULTS_DIR", tmp_path / "edit")
+    monkeypatch.setattr(service, "EDIT_RUNS_DIR", tmp_path / "edit")
 
     service.write_edit_coverage_result("EC_001", {"passed": True})
 

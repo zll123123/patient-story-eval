@@ -11,10 +11,10 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from story_med.config.llm_app_config import load_llm_config
-from story_med.services.story_compliance_pipeline import run_story_compliance_validation
-from story_med.services.summary_pipeline import refresh_case_summary
-from story_med.services.yaml_case_service import load_story_cases
+from story_med.config.app_config import load_llm_config
+from story_med.services.story_generation_evaluation.story_compliance_pipeline import run_story_compliance_validation
+from story_med.services.story_generation_evaluation.summary_pipeline import refresh_case_summary
+from story_med.services.clinical_case_preparation.yaml_case_service import load_story_cases
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -24,9 +24,9 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     """执行 Story 合规审核并刷新 summary。"""
-    args = build_parser().parse_args()
+    args = build_parser().parse_args(argv)
     target_ids = _split_case_ids(args.case_ids)
     cases = {case.case_id: case for case in load_story_cases()}
     missing_ids = [case_id for case_id in target_ids if case_id not in cases]

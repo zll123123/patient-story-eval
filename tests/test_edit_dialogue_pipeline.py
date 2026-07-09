@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from story_med.services import edit_dialogue_pipeline as pipeline
+from story_med.services.story_edit_evaluation import edit_dialogue_pipeline as pipeline
 
 
 class FakeConfig:

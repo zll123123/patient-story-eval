@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from story_med.services import audit_analysis_service as pipeline
+from story_med.services.story_generation_evaluation import audit_analysis_service as pipeline
 
 
 def test_run_case_audit_attribution_skips_when_all_audits_pass(tmp_path: Path) -> None:
@@ -26,7 +26,7 @@ def test_run_case_audit_attribution_skips_when_all_audits_pass(tmp_path: Path) -
             },
         },
     )
-    pipeline.TMP_DIR = case_dir.parent  # type: ignore[assignment]
+    pipeline.STORY_AUDITS_DIR = case_dir.parent  # type: ignore[assignment]
     pipeline.refresh_case_summary = lambda case_id: json.loads((case_dir / "summary.json").read_text(encoding="utf-8"))  # type: ignore[assignment]
 
     result = pipeline.run_case_audit_attribution(_dummy_llm_config(), "SM_TEST")
@@ -62,7 +62,7 @@ def test_run_case_audit_attribution_calls_model_when_any_audit_fails(
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text("请归因", encoding="utf-8")
 
-    pipeline.TMP_DIR = case_dir.parent  # type: ignore[assignment]
+    pipeline.STORY_AUDITS_DIR = case_dir.parent  # type: ignore[assignment]
     pipeline.ATTRIBUTION_PROMPT_FILE = prompt_file  # type: ignore[assignment]
 
     captured: dict[str, str] = {}
@@ -114,7 +114,7 @@ def test_run_case_audit_attribution_refreshes_summary_before_skip_decision(
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text("请归因", encoding="utf-8")
 
-    pipeline.TMP_DIR = case_dir.parent  # type: ignore[assignment]
+    pipeline.STORY_AUDITS_DIR = case_dir.parent  # type: ignore[assignment]
     pipeline.ATTRIBUTION_PROMPT_FILE = prompt_file  # type: ignore[assignment]
 
     monkeypatch.setattr(
@@ -152,7 +152,7 @@ def _write_json(path: Path, data: dict) -> None:
 
 def _dummy_llm_config():
     """构建最小 LLM 配置。"""
-    from story_med.config.llm_app_config import StoryMedLlmConfig
+    from story_med.config.app_config import StoryMedLlmConfig
 
     return StoryMedLlmConfig(
         enabled=True,
