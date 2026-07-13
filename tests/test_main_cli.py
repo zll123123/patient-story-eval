@@ -17,10 +17,10 @@ def test_main_routes_patient_story_full_command(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr(cli.run_patient_story_deepeval, "main", fake_main)
 
-    exit_code = cli.main(["patient-story-full", "--mode", "audit_only", "--case-ids", "SM_001"])
+    exit_code = cli.main(["patient-story-full", "--case-ids", "SM_001"])
 
     assert exit_code == 0
-    assert captured["argv"] == ["--mode", "audit_only", "--case-ids", "SM_001"]
+    assert captured["argv"] == ["--case-ids", "SM_001"]
 
 
 def test_main_routes_patient_story_audit_command(monkeypatch: pytest.MonkeyPatch) -> None:

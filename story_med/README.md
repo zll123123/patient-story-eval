@@ -56,7 +56,7 @@ story_med/
 uv sync --extra eval
 ```
 
-依赖管理以 `pyproject.toml` 和 `uv.lock` 为准，不再维护 `requirements.txt`。
+依赖管理以 `pyproject.toml` 和 `uv.lock` 为准
 
 ## 快速开始
 
@@ -91,7 +91,6 @@ uv run story-med clinical-extract --image-dir 卢-肺癌
 
 ```bash
 uv run story-med patient-story-full \
-  --mode image_case_pipeline \
   --case-ids "SM_001,SM_002" \
   --identifier patient-story-sm001-sm002
 ```
@@ -109,6 +108,38 @@ uv run story-med patient-story-audit \
 ```bash
 uv run story-med patient-story-edit-full --case-ids "EDG_001,EDG_002"
 ```
+
+## 完整链路执行
+
+完整的患者故事生成和审核链路分两步执行：
+
+### 1. 先提取病例基线
+
+```bash
+uv run story-med clinical-extract
+```
+
+### 2. 再执行生成 + 审核 + 归因 + 打分
+
+全量执行：
+
+```bash
+uv run story-med patient-story-full \
+  --identifier patient-story-all-full
+```
+
+指定 case 执行：
+
+```bash
+uv run story-med patient-story-full \
+  --case-ids "SM_001,SM_002" \
+  --identifier patient-story-sm001-sm002
+```
+
+说明：
+
+- `patient-story-full` 会执行生成、审核、归因、打分，以及 DeepEval 上报
+- 如果只想基于已有产物重跑审核，使用 `patient-story-audit`
 
 ## 常用命令
 

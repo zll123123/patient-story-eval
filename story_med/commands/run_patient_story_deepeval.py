@@ -23,7 +23,6 @@ def build_parser() -> argparse.ArgumentParser:
         命令行解析器。
     """
     parser = argparse.ArgumentParser(description="运行患者故事 DeepEval 评估。")
-    parser.add_argument("--mode", choices=["audit_only", "image_case_pipeline"], default="")
     parser.add_argument("--case-ids", default="")
     parser.add_argument("--identifier", default="")
     parser.add_argument("--no-visual-steps", action="store_true")
@@ -58,7 +57,7 @@ def build_env(args: argparse.Namespace, defaults: dict) -> dict[str, str]:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT_DIR)
     env["STORY_MED_RUN_DEEPEVAL_PIPELINE"] = "true"
-    env["STORY_MED_DEEPEVAL_MODE"] = args.mode or str(defaults.get("mode", "image_case_pipeline"))
+    env["STORY_MED_DEEPEVAL_MODE"] = env.get("STORY_MED_DEEPEVAL_MODE", "image_case_pipeline")
     env["STORY_MED_PIPELINE_INCLUDE_VISUAL_STEPS"] = _resolve_bool_env(
         cli_disabled=args.no_visual_steps,
         default_value=bool(defaults.get("include_visual_steps", True)),
