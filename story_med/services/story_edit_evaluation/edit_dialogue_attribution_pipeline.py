@@ -1,10 +1,12 @@
-"""患者故事多轮编辑失败归因流程。"""
+"""患者故事多轮编辑失败分析流程。"""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 from typing import Any, Dict, List
+
+from loguru import logger
 
 from story_med.config.app_config import StoryMedLlmConfig
 from story_med.config.settings import EDIT_AUDITS_DIR
@@ -13,18 +15,18 @@ from story_med.services.story_edit_evaluation.edit_coverage_service import evalu
 EDIT_AUDIT_ANALYSIS_FILE = "edit_audit_analysis.json"
 
 
-def run_edit_dialogue_attribution(
+def run_edit_dialogue_analysis(
     llm_config: StoryMedLlmConfig,
     dialogue_result: Dict[str, Any],
 ) -> Dict[str, Any] | None:
-    """对失败的多轮编辑结果执行独立归因。
+    """对失败的多轮编辑结果执行独立分析。
 
     Args:
         llm_config: LLM 配置。
         dialogue_result: 多轮编辑执行结果。
 
     Returns:
-        归因结果；若无需归因则返回 None。
+        分析结果；若无需分析则返回 None。
     """
     if bool(dialogue_result.get("overall_passed")):
         return None
@@ -35,18 +37,45 @@ def run_edit_dialogue_attribution(
     if not failed_turn:
         return None
 
-    trace = [_trace_entry(failed_turn, recheck_passed=False, source="final_failed_turn")]
-    current_root_turn = failed_turn
-    for prior_turn in _previous_turns(turn_results, int(failed_turn["turn_id"])):
-        recheck = _recheck_turn(llm_config, dialogue_result, prior_turn)
-        trace.append(recheck)
-        if recheck["recheck_passed"] is True:
-            break
-        current_root_turn = prior_turn
+    try:
+        trace = [_trace_entry(failed_turn, recheck_passed=False, source="final_failed_turn")]
+        current_root_turn = failed_turn
+        for prior_turn in _previous_turns(turn_results, int(failed_turn["turn_id"])):
+            recheck = _recheck_turn(llm_config, dialogue_result, prior_turn)
+            trace.append(recheck)
+            if recheck["recheck_passed"] is True:
+                break
+            current_root_turn = prior_turn
 
-    analysis = _build_analysis(dialogue_result, failed_turn, current_root_turn, trace)
-    _write_analysis(str(dialogue_result.get("case_id") or ""), analysis)
-    return analysis
+        analysis = _build_analysis(dialogue_result, failed_turn, current_root_turn, trace)
+        _write_analysis(str(dialogue_result.get("case_id") or ""), analysis)
+        return analysis
+    except Exception as exc:
+        return _handle_analysis_failure(dialogue_result, exc)
+
+
+def _handle_analysis_failure(
+    dialogue_result: Dict[str, Any], error: Exception
+) -> Dict[str, Any]:
+    """记录分析异常并返回失败结果，不影响主编辑结果。"""
+    case_id = str(dialogue_result.get("case_id") or "")
+    failure = {
+        "case_id": case_id,
+        "is_passed": False,
+        "analysis_status": "failed",
+        "error_type": type(error).__name__,
+        "error": str(error),
+    }
+    logger.exception("编辑结果分析失败: case_id={}, error={}", case_id, error)
+    try:
+        _write_analysis(case_id, failure)
+    except Exception as write_error:
+        logger.exception(
+            "编辑结果分析失败记录写入失败: case_id={}, error={}",
+            case_id,
+            write_error,
+        )
+    return failure
 
 
 def _latest_failed_turn(turn_results: List[Dict[str, Any]]) -> Dict[str, Any] | None:

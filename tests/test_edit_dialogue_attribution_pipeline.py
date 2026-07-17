@@ -13,7 +13,7 @@ class FakeLlmConfig:
     """模拟 LLM 配置对象。"""
 
 
-def test_run_edit_dialogue_attribution_assigns_failure_to_final_turn_when_previous_turn_recheck_passes(
+def test_run_edit_dialogue_analysis_assigns_failure_to_final_turn_when_previous_turn_recheck_passes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """验证上一轮重审通过时，失败归因于最终失败轮。"""
@@ -32,7 +32,7 @@ def test_run_edit_dialogue_attribution_assigns_failure_to_final_turn_when_previo
     captured: dict[str, Any] = {}
     monkeypatch.setattr(pipeline, "_write_analysis", lambda case_id, analysis: captured.update({"case_id": case_id, "analysis": analysis}))
 
-    analysis = pipeline.run_edit_dialogue_attribution(FakeLlmConfig(), dialogue_result)
+    analysis = pipeline.run_edit_dialogue_analysis(FakeLlmConfig(), dialogue_result)
 
     assert analysis is not None
     assert analysis["root_cause_turn"] == 3
@@ -42,7 +42,7 @@ def test_run_edit_dialogue_attribution_assigns_failure_to_final_turn_when_previo
     assert captured["case_id"] == "EDG_001"
 
 
-def test_run_edit_dialogue_attribution_assigns_failure_to_first_prior_failed_turn(
+def test_run_edit_dialogue_analysis_assigns_failure_to_first_prior_failed_turn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """验证倒序重审命中 T2 失败、T1 通过时，归因于 T2。"""
@@ -60,13 +60,38 @@ def test_run_edit_dialogue_attribution_assigns_failure_to_first_prior_failed_tur
     monkeypatch.setattr(pipeline, "evaluate_edit_coverage", fake_evaluate)
     monkeypatch.setattr(pipeline, "_write_analysis", lambda *_args, **_kwargs: None)
 
-    analysis = pipeline.run_edit_dialogue_attribution(FakeLlmConfig(), dialogue_result)
+    analysis = pipeline.run_edit_dialogue_analysis(FakeLlmConfig(), dialogue_result)
 
     assert analysis is not None
     assert analysis["root_cause_turn"] == 2
     assert [item["turn_id"] for item in analysis["recheck_trace"]] == [3, 2, 1]
     assert analysis["recheck_trace"][1]["recheck_passed"] is False
     assert analysis["recheck_trace"][2]["recheck_passed"] is True
+
+
+def test_run_edit_dialogue_analysis_captures_recheck_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证分析重审异常会单独记录，不向主流程抛出。"""
+    dialogue_result = _dialogue_result()
+    captured: dict[str, Any] = {}
+
+    def raise_analysis_error(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        raise TimeoutError("LLM analysis timeout")
+
+    monkeypatch.setattr(pipeline, "read_reference_content", lambda *_args, **_kwargs: "before")
+    monkeypatch.setattr(pipeline, "evaluate_edit_coverage", raise_analysis_error)
+    monkeypatch.setattr(
+        pipeline,
+        "_write_analysis",
+        lambda case_id, analysis: captured.update({"case_id": case_id, "analysis": analysis}),
+    )
+
+    result = pipeline.run_edit_dialogue_analysis(FakeLlmConfig(), dialogue_result)
+
+    assert result["analysis_status"] == "failed"
+    assert result["error_type"] == "TimeoutError"
+    assert captured["analysis"]["error"] == "LLM analysis timeout"
 
 
 def _dialogue_result() -> dict[str, Any]:

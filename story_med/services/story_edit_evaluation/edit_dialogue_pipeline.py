@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 from story_med.config.app_config import StoryMedConfig
 from story_med.config.app_config import StoryMedLlmConfig
 from story_med.config.settings import EDIT_AUDITS_DIR
-from story_med.services.story_edit_evaluation.edit_dialogue_attribution_pipeline import run_edit_dialogue_attribution
+from story_med.services.story_edit_evaluation.edit_dialogue_attribution_pipeline import run_edit_dialogue_analysis
 from story_med.services.story_edit_evaluation.edit_coverage_service import (
     evaluate_edit_coverage,
     read_adjusted_content,
@@ -70,7 +70,7 @@ def run_edit_dialogue_case(
         "turn_results": turn_results,
     }
     _write_dialogue_result(dialogue_case["case_id"], result)
-    run_edit_dialogue_attribution(llm_config, result)
+    run_edit_dialogue_analysis(llm_config, result)
     return result
 
 
@@ -128,7 +128,7 @@ def audit_edit_dialogue_case(
         "turn_results": turn_results,
     }
     _write_audit_result(dialogue_case["case_id"], result)
-    run_edit_dialogue_attribution(llm_config, result)
+    run_edit_dialogue_analysis(llm_config, result)
     return result
 
 
