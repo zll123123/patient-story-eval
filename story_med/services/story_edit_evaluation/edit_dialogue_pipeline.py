@@ -81,7 +81,16 @@ def audit_edit_dialogue_case(
 ) -> Dict[str, Any]:
     """基于已有编辑产物重跑覆盖审核与归因。"""
     dialogue_case = get_edit_dialogue_case(dialogue_case_id)
-    existing_result = _load_existing_dialogue_result(dialogue_case_id)
+    try:
+        existing_result = _load_existing_dialogue_result(dialogue_case_id)
+    except FileNotFoundError as exc:
+        result = _build_audit_failed_result(
+            dialogue_case,
+            error_type="missing_dialogue_result",
+            error=str(exc),
+        )
+        _write_audit_result(dialogue_case["case_id"], result)
+        return result
     try:
         ref_context = resolve_reference_context(_reference_edit_case(dialogue_case), app_config)
         reference_session_id = resolve_reference_artifact_session_id(
@@ -90,8 +99,12 @@ def audit_edit_dialogue_case(
         )
         input_content = read_reference_content(dialogue_case["ref_clinical_case_id"], reference_session_id)
     except Exception as exc:
-        result = _build_preflight_failed_dialogue_result(dialogue_case, str(exc))
-        _write_dialogue_result(dialogue_case["case_id"], result)
+        result = _build_audit_failed_result(
+            dialogue_case,
+            error_type="audit_preflight_failed",
+            error=str(exc),
+        )
+        _write_audit_result(dialogue_case["case_id"], result)
         return result
 
     turn_results = _audit_existing_turns(
@@ -114,7 +127,7 @@ def audit_edit_dialogue_case(
         "overall_passed": _build_overall_passed(turn_results),
         "turn_results": turn_results,
     }
-    _write_dialogue_result(dialogue_case["case_id"], result)
+    _write_audit_result(dialogue_case["case_id"], result)
     run_edit_dialogue_attribution(llm_config, result)
     return result
 
@@ -397,6 +410,38 @@ def _build_preflight_failed_dialogue_result(dialogue_case: Dict[str, Any], error
     }
 
 
+def _build_audit_failed_result(
+    dialogue_case: Dict[str, Any], error_type: str, error: str
+) -> Dict[str, Any]:
+    """构建单个编辑用例的审核失败结果。"""
+    return {
+        "case_id": dialogue_case["case_id"],
+        "ref_clinical_case_id": dialogue_case["ref_clinical_case_id"],
+        "summary": dialogue_case.get("summary", ""),
+        "evaluation_mode": "final_only",
+        "audit_status": "failed",
+        "overall_passed": False,
+        "error_type": error_type,
+        "error": error,
+    }
+
+
+def write_audit_failure_result(
+    case_id: str, error_type: str, error: str
+) -> Dict[str, Any]:
+    """为批量审核中的异常 case 写入独立审核失败结果。"""
+    result = {
+        "case_id": case_id,
+        "evaluation_mode": "final_only",
+        "audit_status": "failed",
+        "overall_passed": False,
+        "error_type": error_type,
+        "error": error,
+    }
+    _write_audit_result(case_id, result)
+    return result
+
+
 def _turn_case_id(dialogue_case_id: str, turn_id: int) -> str:
     """生成单轮编辑用例 ID。"""
     return f"{dialogue_case_id}_T{turn_id:02d}"
@@ -405,6 +450,11 @@ def _turn_case_id(dialogue_case_id: str, turn_id: int) -> str:
 def _write_dialogue_result(case_id: str, result: Dict[str, Any]) -> None:
     """写入多轮编辑对话总结果。"""
     _write_json(EDIT_AUDITS_DIR / case_id / "dialogue_result.json", result)
+
+
+def _write_audit_result(case_id: str, result: Dict[str, Any]) -> None:
+    """写入单个多轮编辑用例的审核结果。"""
+    _write_json(EDIT_AUDITS_DIR / case_id / "audit_result.json", result)
 
 
 def _write_turn_result(case_id: str, turn_id: int, result: Dict[str, Any]) -> None:

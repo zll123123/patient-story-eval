@@ -135,3 +135,34 @@ def test_run_dialogue_turns_final_turn_only_accumulates_successful_focuses(
         {"id": "T1", "description": "应新增声明"},
         {"id": "T2", "description": "应修改背景颜色"},
     ]
+
+
+def test_audit_missing_dialogue_result_writes_audit_result_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证缺少编辑执行结果时不覆盖 dialogue_result。"""
+    dialogue_case = {
+        "case_id": "EDG_MISSING",
+        "ref_clinical_case_id": "SM_001",
+        "turns": [],
+    }
+    written: dict[str, Any] = {}
+
+    monkeypatch.setattr(pipeline, "get_edit_dialogue_case", lambda _case_id: dialogue_case)
+    monkeypatch.setattr(
+        pipeline,
+        "_load_existing_dialogue_result",
+        lambda _case_id: (_ for _ in ()).throw(FileNotFoundError("missing")),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_write_audit_result",
+        lambda case_id, result: written.update({"case_id": case_id, "result": result}),
+    )
+
+    result = pipeline.audit_edit_dialogue_case(FakeConfig(), FakeConfig(), "EDG_MISSING")
+
+    assert result["error_type"] == "missing_dialogue_result"
+    assert result["audit_status"] == "failed"
+    assert written["case_id"] == "EDG_MISSING"
+    assert "dialogue_result" not in written["result"]
