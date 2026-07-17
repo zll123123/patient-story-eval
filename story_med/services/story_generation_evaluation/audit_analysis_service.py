@@ -9,36 +9,75 @@ from typing import Any, Dict, List
 from story_med.clients.llm.llm_client import call_llm_json
 from story_med.config.app_config import StoryMedLlmConfig
 from story_med.config.settings import PROMPTS_DIR, RESULTS_DIR, STORY_AUDITS_DIR
-from story_med.services.clinical_case_preparation.clinical_extract_baseline_service import load_clinical_baseline
-from story_med.services.story_generation_evaluation.summary_pipeline import refresh_case_summary
-from story_med.services.clinical_case_preparation.yaml_case_service import get_story_case
+from story_med.services.clinical_case_preparation.clinical_extract_baseline_service import (
+    load_clinical_baseline,
+)
+from story_med.services.story_generation_evaluation.summary_pipeline import (
+    refresh_case_summary,
+)
+from story_med.services.clinical_case_preparation.yaml_case_service import (
+    get_story_case,
+)
+from story_med.utils.timing import TimingCollector, write_stage_snapshots
 
 ATTRIBUTION_PROMPT_FILE = PROMPTS_DIR / "audit_analysis.md"
 
 
-def run_case_audit_attribution(llm_config: StoryMedLlmConfig, case_id: str) -> Dict[str, Any]:
+def run_case_audit_attribution(
+    llm_config: StoryMedLlmConfig, case_id: str
+) -> Dict[str, Any]:
     """按 case 执行审核归因，仅在存在失败审核项时触发。"""
     case_dir = STORY_AUDITS_DIR / case_id
     summary = refresh_case_summary(case_id)
     failed_audits = _failed_audit_keys(summary.get("audit_overview"))
+    timings = TimingCollector()
     if not failed_audits:
         result = _skip_result(case_id)
+        result["execution_stages"] = timings.to_list()
         _write_json(result, case_dir / "audit_analysis.json")
         return result
     if not ATTRIBUTION_PROMPT_FILE.exists():
         result = _pending_result(case_id, failed_audits)
+        result["execution_stages"] = timings.to_list()
         _write_json(result, case_dir / "audit_analysis.json")
         return result
     payload = _build_payload(case_dir, summary, failed_audits)
-    result = call_llm_json(llm_config, _build_prompt(payload))
+    timings = TimingCollector(
+        on_change=lambda stages: _write_attribution_progress(
+            case_dir, case_id, failed_audits, stages
+        )
+    )
+    timings.changed()
+    with timings.stage("audit_analysis", "audit"):
+        result = call_llm_json(llm_config, _build_prompt(payload))
     output = {
         "case_id": case_id,
         "status": "success",
         "failed_audits": failed_audits,
         "attribution": result,
+        "execution_stages": timings.to_list(),
     }
     _write_json(output, case_dir / "audit_analysis.json")
     return output
+
+
+def _write_attribution_progress(
+    case_dir: Path,
+    case_id: str,
+    failed_audits: List[str],
+    stages: List[Dict[str, Any]],
+) -> None:
+    """实时写入归因节点进度。"""
+    write_stage_snapshots(case_dir, stages)
+    _write_json(
+        {
+            "case_id": case_id,
+            "status": "running",
+            "failed_audits": failed_audits,
+            "execution_stages": stages,
+        },
+        case_dir / "audit_analysis.json",
+    )
 
 
 def _failed_audit_keys(audit_overview: Any) -> List[str]:
@@ -48,7 +87,9 @@ def _failed_audit_keys(audit_overview: Any) -> List[str]:
     return [key for key, value in audit_overview.items() if value is False]
 
 
-def _build_payload(case_dir: Path, summary: Dict[str, Any], failed_audits: List[str]) -> Dict[str, Any]:
+def _build_payload(
+    case_dir: Path, summary: Dict[str, Any], failed_audits: List[str]
+) -> Dict[str, Any]:
     """构建归因提示词输入。"""
     case_id = str(summary.get("case_id") or "")
     case = _load_case(case_id)
@@ -57,7 +98,9 @@ def _build_payload(case_dir: Path, summary: Dict[str, Any], failed_audits: List[
         "creative_brief": case.creative_brief,
         "summary": summary,
         "failed_audits": failed_audits,
-        "intermediate_outputs": _load_intermediate_outputs(case_id, str(summary.get("session_id") or "")),
+        "intermediate_outputs": _load_intermediate_outputs(
+            case_id, str(summary.get("session_id") or "")
+        ),
     }
     artifact_mapping = {
         "outline_passed": "outline_hard_rule_compare.json",
@@ -88,7 +131,9 @@ def _load_case(case_id: str):
 def _build_prompt(payload: Dict[str, Any]) -> str:
     """拼接审核归因 prompt 与输入。"""
     template = ATTRIBUTION_PROMPT_FILE.read_text(encoding="utf-8")
-    return f"{template}\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
+    return (
+        f"{template}\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
+    )
 
 
 def _load_intermediate_outputs(case_id: str, session_id: str) -> Dict[str, Any]:
@@ -98,11 +143,23 @@ def _load_intermediate_outputs(case_id: str, session_id: str) -> Dict[str, Any]:
     asset_dir = RESULTS_DIR / "assets" / case_id / session_id
     output: Dict[str, Any] = {}
     case_parse_path = _first_existing_path(asset_dir, ["case_parse/case_parse.md"])
-    outline_path = _first_existing_path(asset_dir, ["generate_outline/outline.md", "generate_outline/generate_outline_1_outline.md"])
-    story_path = _first_existing_path(asset_dir, ["generate_story/story.md", "generate_story/generate_story_1_story.md"])
+    outline_path = _first_existing_path(
+        asset_dir,
+        [
+            "generate_outline/outline.md",
+            "generate_outline/generate_outline_1_outline.md",
+        ],
+    )
+    story_path = _first_existing_path(
+        asset_dir,
+        ["generate_story/story.md", "generate_story/generate_story_1_story.md"],
+    )
     image_design_path = _first_existing_path(
         asset_dir,
-        ["generate_images/image_design.json", "generate_images/generate_images_6_image_design.json"],
+        [
+            "generate_images/image_design.json",
+            "generate_images/generate_images_6_image_design.json",
+        ],
     )
     if case_parse_path.exists():
         output["case_parse"] = case_parse_path.read_text(encoding="utf-8")
@@ -152,4 +209,6 @@ def _read_json(path: Path) -> Dict[str, Any]:
 def _write_json(data: Dict[str, Any], output_path: Path) -> None:
     """写入 JSON 文件。"""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    output_path.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+    )

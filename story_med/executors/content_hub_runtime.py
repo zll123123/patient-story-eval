@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from time import perf_counter, sleep
-from typing import Any, Callable, Dict, TypeVar
+from typing import Any, Callable, Dict
 
 from requests import Session
 
@@ -14,25 +13,6 @@ from story_med.config.app_config import StoryMedConfig
 
 HISTORY_POLL_TIMEOUT_SECONDS = 600
 HISTORY_POLL_INTERVAL_SECONDS = 10
-
-T = TypeVar("T")
-
-
-def now_iso() -> str:
-    """返回当前 UTC ISO 时间。"""
-    return datetime.now(UTC).isoformat()
-
-
-def timed_call(func: Callable[[], T]) -> tuple[T, Dict[str, Any]]:
-    """执行函数并记录耗时。"""
-    started_at = now_iso()
-    started_perf = perf_counter()
-    result = func()
-    return result, {
-        "started_at": started_at,
-        "finished_at": now_iso(),
-        "duration_seconds": round(perf_counter() - started_perf, 3),
-    }
 
 
 def wait_for_terminal_history(

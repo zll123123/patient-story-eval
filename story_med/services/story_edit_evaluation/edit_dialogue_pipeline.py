@@ -61,7 +61,7 @@ def run_edit_dialogue_case(
         "case_id": dialogue_case["case_id"],
         "ref_clinical_case_id": dialogue_case["ref_clinical_case_id"],
         "summary": dialogue_case.get("summary", ""),
-        "evaluation_mode": dialogue_case.get("evaluation_mode", "per_turn"),
+        "evaluation_mode": "final_only",
         "session_id": ref_context["session_id"],
         "reference_session_id": reference_session_id,
         "task_id": ref_context["task_id"],
@@ -106,7 +106,7 @@ def audit_edit_dialogue_case(
         "case_id": dialogue_case["case_id"],
         "ref_clinical_case_id": dialogue_case["ref_clinical_case_id"],
         "summary": dialogue_case.get("summary", ""),
-        "evaluation_mode": dialogue_case.get("evaluation_mode", "per_turn"),
+        "evaluation_mode": "final_only",
         "session_id": ref_context["session_id"],
         "reference_session_id": reference_session_id,
         "task_id": ref_context["task_id"],
@@ -147,28 +147,25 @@ def _run_dialogue_turns(
     reference_session_id: str,
     input_content: str,
 ) -> List[Dict[str, Any]]:
-    """串行执行多轮编辑并逐轮审核。"""
+    """串行执行多轮编辑，全部成功后仅审核最终轮。"""
     passed_focuses: List[Dict[str, Any]] = []
-    failed_turn_ids: List[int] = []
     turn_results: List[Dict[str, Any]] = []
-    evaluation_mode = str(dialogue_case.get("evaluation_mode") or "per_turn").strip() or "per_turn"
-    final_turn_id = max((int(turn["turn_id"]) for turn in dialogue_case["turns"]), default=0)
+    execution_failed = False
     for turn in dialogue_case["turns"]:
-        should_evaluate = evaluation_mode == "per_turn" or int(turn["turn_id"]) == final_turn_id
-        turn_result = _run_single_dialogue_turn(
-            app_config=app_config,
-            llm_config=llm_config,
-            dialogue_case=dialogue_case,
-            turn=turn,
-            ref_context=ref_context,
-            reference_session_id=reference_session_id,
-            input_content=input_content,
-            passed_focuses=passed_focuses,
-            failed_turn_ids=failed_turn_ids,
-            should_evaluate=should_evaluate,
-        )
+        if execution_failed:
+            turn_result = _not_run_turn(
+                dialogue_case, turn, passed_focuses, "前一轮编辑执行失败"
+            )
+        else:
+            turn_result = _execute_single_turn(
+                app_config=app_config,
+                dialogue_case=dialogue_case,
+                turn=turn,
+                ref_context=ref_context,
+                passed_focuses=passed_focuses,
+            )
         turn_results.append(turn_result)
-        if turn_result.get("evaluated") is True and turn_result.get("passed") is True:
+        if turn_result.get("execution_status") == "success":
             passed_focuses.append(
                 {
                     "turn_id": turn["turn_id"],
@@ -176,16 +173,16 @@ def _run_dialogue_turns(
                     "involved_agents": turn.get("involved_agents", []),
                 }
             )
-        elif turn_result.get("evaluated") is not True and turn_result.get("execution_passed") is True:
-            passed_focuses.append(
-                {
-                    "turn_id": turn["turn_id"],
-                    "evaluation_focus": turn["evaluation_focus"],
-                    "involved_agents": turn.get("involved_agents", []),
-                }
-            )
-        elif turn_result.get("execution_passed") is not True or turn_result.get("passed") is not True:
-            failed_turn_ids.append(int(turn["turn_id"]))
+        else:
+            execution_failed = True
+    if turn_results and not execution_failed:
+        _audit_final_turn(
+            llm_config,
+            dialogue_case,
+            turn_results[-1],
+            reference_session_id,
+            input_content,
+        )
     return turn_results
 
 
@@ -197,59 +194,47 @@ def _audit_existing_turns(
     reference_session_id: str,
     input_content: str,
 ) -> List[Dict[str, Any]]:
-    """基于已有编辑产物重跑逐轮审核。"""
+    """基于已有编辑产物仅重跑最终轮审核。"""
     existing_turns = {
         int(item.get("turn_id") or 0): item
         for item in existing_result.get("turn_results", [])
         if isinstance(item, dict)
     }
-    passed_focuses: List[Dict[str, Any]] = []
-    failed_turn_ids: List[int] = []
     turn_results: List[Dict[str, Any]] = []
-    evaluation_mode = str(dialogue_case.get("evaluation_mode") or "per_turn").strip() or "per_turn"
-    final_turn_id = max((int(turn["turn_id"]) for turn in dialogue_case["turns"]), default=0)
+    execution_failed = False
+    passed_focuses: List[Dict[str, Any]] = []
     for turn in dialogue_case["turns"]:
-        should_evaluate = evaluation_mode == "per_turn" or int(turn["turn_id"]) == final_turn_id
         existing_turn = existing_turns.get(int(turn["turn_id"]) or 0, {})
-        turn_result = _audit_single_existing_turn(
-            llm_config=llm_config,
-            dialogue_case=dialogue_case,
-            turn=turn,
-            existing_turn=existing_turn,
-            ref_context=ref_context,
-            reference_session_id=reference_session_id,
-            input_content=input_content,
-            passed_focuses=passed_focuses,
-            failed_turn_ids=failed_turn_ids,
-            should_evaluate=should_evaluate,
-        )
+        turn_result = _execution_record_from_existing(dialogue_case, turn, existing_turn)
         turn_results.append(turn_result)
-        if turn_result.get("evaluated") is True and turn_result.get("passed") is True:
+        if execution_failed:
+            continue
+        if turn_result.get("execution_status") == "success":
             passed_focuses.append({"turn_id": turn["turn_id"], "evaluation_focus": turn["evaluation_focus"], "involved_agents": turn.get("involved_agents", [])})
-        elif turn_result.get("evaluated") is not True and turn_result.get("execution_passed") is True:
-            passed_focuses.append({"turn_id": turn["turn_id"], "evaluation_focus": turn["evaluation_focus"], "involved_agents": turn.get("involved_agents", [])})
-        elif turn_result.get("execution_passed") is not True or turn_result.get("passed") is not True:
-            failed_turn_ids.append(int(turn["turn_id"]))
+        else:
+            execution_failed = True
+    if turn_results and not execution_failed:
+        _audit_final_turn(
+            llm_config,
+            dialogue_case,
+            turn_results[-1],
+            reference_session_id,
+            input_content,
+        )
     return turn_results
 
 
-def _run_single_dialogue_turn(
+def _execute_single_turn(
     app_config: StoryMedConfig,
-    llm_config: StoryMedLlmConfig,
     dialogue_case: Dict[str, Any],
     turn: Dict[str, Any],
     ref_context: Dict[str, str],
-    reference_session_id: str,
-    input_content: str,
     passed_focuses: List[Dict[str, Any]],
-    failed_turn_ids: List[int],
-    should_evaluate: bool,
 ) -> Dict[str, Any]:
-    """执行并审核单轮多轮编辑。"""
+    """只执行单轮编辑，不执行审核。"""
     turn_case_id = _turn_case_id(dialogue_case["case_id"], int(turn["turn_id"]))
     atomic_focus = _normalize_focus_items(turn["evaluation_focus"])
     effective_focus = build_cumulative_evaluation_focus(passed_focuses, atomic_focus)
-    runtime_edit_case = _runtime_edit_case(dialogue_case, turn, turn_case_id, effective_focus)
     adjustment_result = run_story_adjustment(
         config=app_config,
         case_id=turn_case_id,
@@ -257,17 +242,6 @@ def _run_single_dialogue_turn(
         task_id=ref_context["task_id"],
         message=turn["message"],
     )
-    validation = (
-        _validate_turn_result(
-            llm_config=llm_config,
-            runtime_edit_case=runtime_edit_case,
-            session_id=ref_context["session_id"],
-            adjustment_result=adjustment_result,
-            input_content=input_content,
-        )
-        if should_evaluate
-        else _skipped_turn_validation(adjustment_result)
-    )
     result = {
         "turn_id": turn["turn_id"],
         "case_id": turn_case_id,
@@ -277,66 +251,85 @@ def _run_single_dialogue_turn(
         "atomic_evaluation_focus": atomic_focus,
         "effective_evaluation_focus": effective_focus,
         "included_previous_turns": [item["turn_id"] for item in passed_focuses],
-        "excluded_failed_turns": list(failed_turn_ids),
-        "evaluated": should_evaluate,
+        "execution_status": "success" if adjustment_result.get("success") else "failed",
         "execution_passed": bool(adjustment_result.get("success")),
         "adjustment_result": adjustment_result,
-        "edit_coverage_validation": validation,
-        "passed": bool(validation.get("passed")) if should_evaluate else bool(adjustment_result.get("success")),
-        "score": validation.get("score", 0),
     }
-    _write_turn_result(dialogue_case["case_id"], int(turn["turn_id"]), result)
     return result
 
 
-def _audit_single_existing_turn(
-    llm_config: StoryMedLlmConfig,
+def _not_run_turn(
+    dialogue_case: Dict[str, Any],
+    turn: Dict[str, Any],
+    passed_focuses: List[Dict[str, Any]],
+    reason: str,
+) -> Dict[str, Any]:
+    """记录未执行的后续轮次。"""
+    return {
+        "turn_id": turn["turn_id"],
+        "case_id": _turn_case_id(dialogue_case["case_id"], int(turn["turn_id"])),
+        "message": turn["message"],
+        "intent": turn.get("intent", {}),
+        "involved_agents": turn.get("involved_agents", []),
+        "atomic_evaluation_focus": _normalize_focus_items(turn["evaluation_focus"]),
+        "effective_evaluation_focus": build_cumulative_evaluation_focus(
+            passed_focuses, _normalize_focus_items(turn["evaluation_focus"])
+        ),
+        "included_previous_turns": [item["turn_id"] for item in passed_focuses],
+        "execution_status": "not_run",
+        "execution_passed": False,
+        "execution_error": reason,
+    }
+
+
+def _execution_record_from_existing(
     dialogue_case: Dict[str, Any],
     turn: Dict[str, Any],
     existing_turn: Dict[str, Any],
-    ref_context: Dict[str, str],
-    reference_session_id: str,
-    input_content: str,
-    passed_focuses: List[Dict[str, Any]],
-    failed_turn_ids: List[int],
-    should_evaluate: bool,
 ) -> Dict[str, Any]:
-    """审核单轮已有编辑产物。"""
-    turn_case_id = _turn_case_id(dialogue_case["case_id"], int(turn["turn_id"]))
-    atomic_focus = _normalize_focus_items(turn["evaluation_focus"])
-    effective_focus = build_cumulative_evaluation_focus(passed_focuses, atomic_focus)
-    runtime_edit_case = _runtime_edit_case(dialogue_case, turn, turn_case_id, effective_focus)
+    """读取已有轮次的执行结果，不重建逐轮审核结果。"""
     adjustment_result = existing_turn.get("adjustment_result") if isinstance(existing_turn.get("adjustment_result"), dict) else {}
-    validation = (
-        _validate_turn_result(
-            llm_config=llm_config,
-            runtime_edit_case=runtime_edit_case,
-            session_id=ref_context["session_id"],
-            adjustment_result=adjustment_result,
-            input_content=input_content,
-        )
-        if should_evaluate
-        else _skipped_turn_validation(adjustment_result)
-    )
-    result = {
+    success = bool(adjustment_result.get("success"))
+    return {
         "turn_id": turn["turn_id"],
-        "case_id": turn_case_id,
+        "case_id": _turn_case_id(dialogue_case["case_id"], int(turn["turn_id"])),
         "message": turn["message"],
         "intent": turn.get("intent", {}),
         "involved_agents": turn.get("involved_agents", []),
-        "atomic_evaluation_focus": atomic_focus,
-        "effective_evaluation_focus": effective_focus,
-        "included_previous_turns": [item["turn_id"] for item in passed_focuses],
-        "excluded_failed_turns": list(failed_turn_ids),
-        "evaluated": should_evaluate,
-        "execution_passed": bool(adjustment_result.get("success")),
+        "atomic_evaluation_focus": _normalize_focus_items(turn["evaluation_focus"]),
+        "effective_evaluation_focus": existing_turn.get("effective_evaluation_focus") or [],
+        "execution_status": "success" if success else "failed",
+        "execution_passed": success,
         "adjustment_result": adjustment_result,
-        "edit_coverage_validation": validation,
-        "passed": bool(validation.get("passed")) if should_evaluate else bool(adjustment_result.get("success")),
-        "score": validation.get("score", 0),
     }
-    _write_turn_result(dialogue_case["case_id"], int(turn["turn_id"]), result)
-    return result
+
+
+def _audit_final_turn(
+    llm_config: StoryMedLlmConfig,
+    dialogue_case: Dict[str, Any],
+    turn_result: Dict[str, Any],
+    session_id: str,
+    input_content: str,
+)-> None:
+    """仅审核最终轮并写入最终轮审核结果。"""
+    turn_case = _runtime_edit_case(
+        dialogue_case,
+        turn_result,
+        str(turn_result["case_id"]),
+        turn_result.get("effective_evaluation_focus") or [],
+    )
+    validation = _validate_turn_result(
+        llm_config,
+        turn_case,
+        session_id,
+        turn_result.get("adjustment_result") or {},
+        input_content,
+    )
+    turn_result["audit_status"] = "passed" if validation.get("passed") else "failed"
+    turn_result["edit_coverage_validation"] = validation
+    turn_result["passed"] = bool(validation.get("passed"))
+    turn_result["score"] = validation.get("score", 0)
+    _write_turn_result(dialogue_case["case_id"], int(turn_result["turn_id"]), turn_result)
 
 
 def _validate_turn_result(
@@ -358,48 +351,6 @@ def _validate_turn_result(
         input_content,
         output_content,
     )
-
-
-def _failed_turn_validation(runtime_edit_case: Dict[str, Any], adjustment_result: Dict[str, Any]) -> Dict[str, Any]:
-    """构建单轮调整失败时的审核结果。"""
-    evidence_parts = [str(item) for item in adjustment_result.get("stream_errors") or [] if str(item)]
-    if adjustment_result.get("error"):
-        evidence_parts.append(str(adjustment_result["error"]))
-    required_nodes = _required_nodes(runtime_edit_case)
-    return {
-        "metric_name": "修改覆盖",
-        "score": 0,
-        "passed": False,
-        "evaluated": True,
-        "required_nodes": required_nodes,
-        "artifact_coverage": {
-            "passed": False,
-            "present_nodes": [],
-            "missing_nodes": required_nodes,
-        },
-        "node_results": [],
-        "reason": "调整接口未成功产出修改后内容，跳过当前轮编辑覆盖审核。",
-        "evidence": "; ".join(evidence_parts),
-    }
-
-
-def _skipped_turn_validation(adjustment_result: Dict[str, Any]) -> Dict[str, Any]:
-    """构建未执行覆盖审核时的占位结果。"""
-    return {
-        "metric_name": "修改覆盖",
-        "score": 0,
-        "passed": bool(adjustment_result.get("success")),
-        "evaluated": False,
-        "required_nodes": [],
-        "artifact_coverage": {
-            "passed": bool(adjustment_result.get("success")),
-            "present_nodes": [],
-            "missing_nodes": [],
-        },
-        "node_results": [],
-        "reason": "当前用例配置为仅最终轮评估，本轮仅记录执行结果，不进行覆盖审核。",
-        "evidence": "",
-    }
 
 
 def _runtime_edit_case(
@@ -435,7 +386,7 @@ def _build_preflight_failed_dialogue_result(dialogue_case: Dict[str, Any], error
         "case_id": dialogue_case["case_id"],
         "ref_clinical_case_id": dialogue_case["ref_clinical_case_id"],
         "summary": dialogue_case.get("summary", ""),
-        "evaluation_mode": dialogue_case.get("evaluation_mode", "per_turn"),
+        "evaluation_mode": "final_only",
         "session_id": "",
         "reference_session_id": "",
         "task_id": "",
@@ -444,14 +395,6 @@ def _build_preflight_failed_dialogue_result(dialogue_case: Dict[str, Any], error
         "turn_results": [],
         "error": f"多轮编辑接口前置条件不满足：{error}",
     }
-
-
-def _required_nodes(edit_case: Dict[str, Any]) -> List[str]:
-    """读取运行时编辑用例要求审核的节点。"""
-    involved_agent = edit_case.get("involved_agent") if isinstance(edit_case.get("involved_agent"), dict) else {}
-    raw_nodes = involved_agent.get("required") if isinstance(involved_agent, dict) else []
-    nodes = [str(node).strip() for node in raw_nodes if str(node).strip()]
-    return nodes or ["html"]
 
 
 def _turn_case_id(dialogue_case_id: str, turn_id: int) -> str:
@@ -501,11 +444,10 @@ def _normalize_focus_items(raw_focus: Any) -> List[Dict[str, str]]:
 
 
 def _build_overall_passed(turn_results: List[Dict[str, Any]]) -> bool:
-    """汇总多轮编辑整体通过状态。"""
+    """汇总多轮执行和最终轮审核状态。"""
     if not turn_results:
         return False
-    executions_ok = all(item.get("execution_passed") is True for item in turn_results)
-    evaluated_turns = [item for item in turn_results if item.get("evaluated") is True]
-    if not evaluated_turns:
-        return executions_ok
-    return executions_ok and all(item.get("passed") is True for item in evaluated_turns)
+    if not all(item.get("execution_status") == "success" for item in turn_results):
+        return False
+    final_turn = max(turn_results, key=lambda item: int(item.get("turn_id") or 0))
+    return final_turn.get("audit_status") == "passed"

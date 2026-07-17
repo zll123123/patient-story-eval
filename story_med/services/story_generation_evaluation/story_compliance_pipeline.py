@@ -10,7 +10,10 @@ from story_med.clients.llm.llm_client import call_llm_json
 from story_med.config.app_config import StoryMedLlmConfig
 from story_med.config.settings import PROMPTS_DIR, RESULTS_DIR, STORY_AUDITS_DIR
 from story_med.models.case_model import StoryCaseConfig
-from story_med.services.clinical_case_preparation.clinical_extract_baseline_service import load_clinical_baseline
+from story_med.services.clinical_case_preparation.clinical_extract_baseline_service import (
+    load_clinical_baseline,
+)
+from story_med.utils.timing import TimingCollector, write_stage_snapshots
 
 STORY_COMPLIANCE_PROMPT_FILE = PROMPTS_DIR / "story_compliance_validate.md"
 
@@ -18,6 +21,7 @@ STORY_COMPLIANCE_PROMPT_FILE = PROMPTS_DIR / "story_compliance_validate.md"
 def run_story_compliance_validation(
     llm_config: StoryMedLlmConfig,
     case: StoryCaseConfig,
+    session_id: str | None = None,
 ) -> Dict[str, Any]:
     """对最近一次 Story 文本执行合规审核。
 
@@ -30,10 +34,14 @@ def run_story_compliance_validation(
     """
     output_dir = STORY_AUDITS_DIR / case.case_id
     output_dir.mkdir(parents=True, exist_ok=True)
+    timings = TimingCollector(
+        on_change=lambda stages: _write_compliance_progress(case, output_dir, stages)
+    )
+    _write_compliance_progress(case, output_dir, [])
     try:
-        result = _build_validation_result(llm_config, case)
+        result = _build_validation_result(llm_config, case, timings, session_id)
     except Exception as exc:
-        result = _blocked_result(case, str(exc))
+        result = _blocked_result(case, str(exc), timings.to_list())
     _write_json(result, output_dir / "story_compliance_validation.json")
     return result
 
@@ -41,11 +49,13 @@ def run_story_compliance_validation(
 def _build_validation_result(
     llm_config: StoryMedLlmConfig,
     case: StoryCaseConfig,
+    timings: TimingCollector,
+    session_id: str | None,
 ) -> Dict[str, Any]:
     """构建并执行 Story 合规审核。"""
     if not STORY_COMPLIANCE_PROMPT_FILE.exists():
         return _pending_prompt_result(case)
-    session_id = _latest_asset_session_id(case)
+    session_id = session_id or _latest_asset_session_id(case)
     asset_dir = RESULTS_DIR / "assets" / case.case_id / session_id
     story_text = _read_asset_text(asset_dir, "generate_story")
     payload = {
@@ -54,11 +64,13 @@ def _build_validation_result(
         "clinical_extract": load_clinical_baseline(case),
         "story_text": story_text,
     }
-    model_result = call_llm_json(llm_config, _build_prompt(payload))
+    with timings.stage("story_compliance_audit", "audit"):
+        model_result = call_llm_json(llm_config, _build_prompt(payload))
     return {
         "case_id": case.case_id,
         "session_id": session_id,
         "status": "success",
+        "execution_stages": timings.to_list(),
         **model_result,
     }
 
@@ -114,7 +126,9 @@ def _pending_prompt_result(case: StoryCaseConfig) -> Dict[str, Any]:
     }
 
 
-def _blocked_result(case: StoryCaseConfig, error: str) -> Dict[str, Any]:
+def _blocked_result(
+    case: StoryCaseConfig, error: str, execution_stages: list[Dict[str, Any]]
+) -> Dict[str, Any]:
     """构建审核阻塞结果。"""
     return {
         "case_id": case.case_id,
@@ -123,11 +137,34 @@ def _blocked_result(case: StoryCaseConfig, error: str) -> Dict[str, Any]:
         "is_passed": False,
         "summary": "Story 合规审核执行失败",
         "error": error,
+        "execution_stages": execution_stages,
         "issues": [],
     }
+
+
+def _write_compliance_progress(
+    case: StoryCaseConfig,
+    output_dir: Path,
+    execution_stages: list[Dict[str, Any]],
+) -> None:
+    """实时写入 Story 合规审核进度。"""
+    write_stage_snapshots(output_dir, execution_stages)
+    _write_json(
+        {
+            "case_id": case.case_id,
+            "session_id": "",
+            "status": "running",
+            "is_passed": False,
+            "execution_stages": execution_stages,
+            "issues": [],
+        },
+        output_dir / "story_compliance_validation.json",
+    )
 
 
 def _write_json(data: Dict[str, Any], output_path: Path) -> None:
     """写入 JSON 文件。"""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    output_path.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+    )

@@ -18,4 +18,4 @@ def test_main_forwards_audit_only_mode(monkeypatch) -> None:
     exit_code = command.main(["--case-ids", "SM_001"])
 
     assert exit_code == 0
-    assert captured["argv"] == ["--mode", "audit_only", "--case-ids", "SM_001"]
+    assert captured["argv"] == ["--case-ids", "SM_001"]

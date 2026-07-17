@@ -6,6 +6,7 @@ import json
 import requests
 from datetime import UTC, datetime
 from pathlib import Path
+from time import perf_counter
 from typing import Any, Dict, Iterable, List
 
 from requests import Response, Session
@@ -20,6 +21,7 @@ AUTH_LOGIN_PATH = "/api/auth/login"
 STORY_MED_PRESIGN_UPLOAD_PATH = "/api/agent/tasks/story-med/presign-upload"
 STORY_MED_PRESIGN_DOWNLOAD_PATH = "/api/agent/tasks/story-med/presign-download"
 DEFAULT_AGENT_TYPE = "patient-case"
+STREAM_TASK_TIMEOUT_SECONDS = 1800
 
 
 def login_content_hub(session: Session, config: StoryMedConfig) -> Dict[str, Any]:
@@ -58,7 +60,9 @@ def ensure_content_hub_auth(session: Session, config: StoryMedConfig) -> None:
     login_content_hub(session, config)
 
 
-def create_story_med_upload_url(session: Session, config: StoryMedConfig, filename: str) -> Dict[str, Any]:
+def create_story_med_upload_url(
+    session: Session, config: StoryMedConfig, filename: str
+) -> Dict[str, Any]:
     """获取 story-med 文件上传预签名地址。
 
     Args:
@@ -82,7 +86,9 @@ def create_story_med_upload_url(session: Session, config: StoryMedConfig, filena
     return data
 
 
-def upload_story_med_file(upload_url: str, file_path: Path, content_type: str, config: StoryMedConfig) -> Dict[str, Any]:
+def upload_story_med_file(
+    upload_url: str, file_path: Path, content_type: str, config: StoryMedConfig
+) -> Dict[str, Any]:
     """上传文件到中台返回的 OSS 预签名地址。
 
     Args:
@@ -103,7 +109,9 @@ def upload_story_med_file(upload_url: str, file_path: Path, content_type: str, c
             verify=config.verify_ssl,
         )
     if response.status_code >= 400:
-        raise RuntimeError(f"OSS 上传失败: {file_path} {response.status_code} {response.text[:500]}")
+        raise RuntimeError(
+            f"OSS 上传失败: {file_path} {response.status_code} {response.text[:500]}"
+        )
     return {"status_code": response.status_code, "size_bytes": file_path.stat().st_size}
 
 
@@ -155,20 +163,30 @@ def stream_agent_task(
         payload,
     )
     _raise_for_stream_error(response)
-    event_count = write_stream_chunks(response.iter_content(chunk_size=1024, decode_unicode=True), output_path)
-    timing_path = write_stream_step_timings(stream_event_log_path(output_path), stream_timing_path(output_path))
+    event_count = write_stream_chunks(
+        response.iter_content(chunk_size=1024, decode_unicode=True),
+        output_path,
+        timeout_seconds=STREAM_TASK_TIMEOUT_SECONDS,
+    )
+    event_log_path = stream_event_log_path(output_path)
+    events = _load_stream_events(event_log_path)
+    agent_steps = _extract_step_timings(events)
     body = {
         "status_code": response.status_code,
         "stream_output_path": str(output_path),
-        "stream_event_log_path": str(stream_event_log_path(output_path)),
-        "stream_step_timing_path": str(timing_path),
+        "stream_event_log_path": str(event_log_path),
         "event_count": event_count,
-        "agent_node_timings": _json_file(timing_path),
+        "agent_node_timings": {
+            "steps": agent_steps,
+            "current_node": _current_node(agent_steps),
+        },
     }
     return StoryApiResponse(status_code=response.status_code, body=body, data=body)
 
 
-def get_agent_task_history(session: Session, config: StoryMedConfig, task_id: str) -> StoryApiResponse:
+def get_agent_task_history(
+    session: Session, config: StoryMedConfig, task_id: str
+) -> StoryApiResponse:
     """查询内容中台 Agent 任务历史。
 
     Args:
@@ -189,7 +207,9 @@ def get_agent_task_history(session: Session, config: StoryMedConfig, task_id: st
     return StoryApiResponse(status_code=response.status_code, body=body, data=body)
 
 
-def create_story_med_download_url(session: Session, config: StoryMedConfig, file_key: str) -> Dict[str, Any]:
+def create_story_med_download_url(
+    session: Session, config: StoryMedConfig, file_key: str
+) -> Dict[str, Any]:
     """获取 story-med 文件下载预签名地址。
 
     Args:
@@ -213,7 +233,9 @@ def create_story_med_download_url(session: Session, config: StoryMedConfig, file
     return data
 
 
-def download_story_med_file(download_url: str, output_path: Path, config: StoryMedConfig) -> Dict[str, Any]:
+def download_story_med_file(
+    download_url: str, output_path: Path, config: StoryMedConfig
+) -> Dict[str, Any]:
     """下载 story-med 预签名文件。
 
     Args:
@@ -225,9 +247,13 @@ def download_story_med_file(download_url: str, output_path: Path, config: StoryM
         下载结果摘要。
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    response = requests.get(download_url, timeout=config.timeout_seconds, verify=config.verify_ssl)
+    response = requests.get(
+        download_url, timeout=config.timeout_seconds, verify=config.verify_ssl
+    )
     if response.status_code >= 400:
-        raise RuntimeError(f"OSS 下载失败: {output_path} {response.status_code} {response.text[:500]}")
+        raise RuntimeError(
+            f"OSS 下载失败: {output_path} {response.status_code} {response.text[:500]}"
+        )
     output_path.write_bytes(response.content)
     return {
         "local_path": str(output_path),
@@ -263,7 +289,9 @@ def stream_agent_adjustment_task(
     return stream_agent_task(session, config, payload, output_path)
 
 
-def build_adjustment_payload(task_id: str, agent_type: str, session_id: str, message: str) -> Dict[str, Any]:
+def build_adjustment_payload(
+    task_id: str, agent_type: str, session_id: str, message: str
+) -> Dict[str, Any]:
     """构建调整接口请求体。
 
     Args:
@@ -472,18 +500,25 @@ def _json_body(response: Response, path: str) -> Dict[str, Any]:
     """解析 JSON 响应并处理错误状态。"""
     body = _safe_json_body(response)
     if response.status_code >= 400:
-        raise RuntimeError(f"{response.status_code} {path}: {body or response.text[:500]}")
+        raise RuntimeError(
+            f"{response.status_code} {path}: {body or response.text[:500]}"
+        )
     if not body:
         raise RuntimeError(f"接口返回非 JSON 对象: {path}")
     return body
 
 
-def write_stream_chunks(chunks: Iterable[str | bytes], output_path: Path) -> int:
+def write_stream_chunks(
+    chunks: Iterable[str | bytes],
+    output_path: Path,
+    timeout_seconds: int = STREAM_TASK_TIMEOUT_SECONDS,
+) -> int:
     """写入 SSE 分块内容。
 
     Args:
         chunks: SSE 分块迭代器。
         output_path: 原始流输出路径。
+        timeout_seconds: SSE 总执行时长上限。
 
     Returns:
         识别到的 data 事件数量。
@@ -491,8 +526,15 @@ def write_stream_chunks(chunks: Iterable[str | bytes], output_path: Path) -> int
     event_count = 0
     event_log_path = stream_event_log_path(output_path)
     line_buffer = ""
-    with output_path.open("w", encoding="utf-8") as file_obj, event_log_path.open("w", encoding="utf-8") as event_obj:
+    deadline = perf_counter() + timeout_seconds
+    with output_path.open("w", encoding="utf-8") as file_obj, event_log_path.open(
+        "w", encoding="utf-8"
+    ) as event_obj:
         for chunk in chunks:
+            if perf_counter() >= deadline:
+                raise TimeoutError(
+                    f"SSE 任务超过 {timeout_seconds} 秒未完成，转为 history 恢复"
+                )
             if not chunk:
                 continue
             text = chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
@@ -505,27 +547,9 @@ def write_stream_chunks(chunks: Iterable[str | bytes], output_path: Path) -> int
     return event_count
 
 
-def write_stream_step_timings(event_log_path: Path, timing_path: Path) -> Path:
-    """基于内容中台 SSE 事件日志生成节点耗时。"""
-    events = _load_stream_events(event_log_path)
-    steps = _extract_step_timings(events)
-    result = {
-        "event_log_path": str(event_log_path),
-        "steps": steps,
-        "current_node": _current_node(steps),
-    }
-    timing_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-    return timing_path
-
-
 def stream_event_log_path(output_path: Path) -> Path:
     """构建带时间戳事件日志路径。"""
     return output_path.with_name(f"{output_path.stem}_events.jsonl")
-
-
-def stream_timing_path(output_path: Path) -> Path:
-    """构建内部节点耗时结果路径。"""
-    return output_path.with_name(f"{output_path.stem}_step_timings.json")
 
 
 def _write_received_events(buffer: str, event_obj: Any) -> str:
@@ -545,7 +569,11 @@ def _write_event_line(line: str, event_obj: Any) -> None:
     if not line.startswith("data:"):
         return
     event_obj.write(
-        json.dumps({"received_at": _now_iso(), "payload": _safe_json(line[5:].strip())}, ensure_ascii=False) + "\n"
+        json.dumps(
+            {"received_at": _now_iso(), "payload": _safe_json(line[5:].strip())},
+            ensure_ascii=False,
+        )
+        + "\n"
     )
     event_obj.flush()
 
@@ -598,18 +626,25 @@ def _extract_step_timings(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         elif status == "ERROR" and parent_step_id in steps:
             steps[parent_step_id]["status"] = "error"
             steps[parent_step_id]["finished_at"] = received_at
+            data = raw.get("data")
+            steps[parent_step_id]["error"] = _format_agent_error(data)
+            steps[parent_step_id]["error_type"] = "UpstreamAgentError"
     _finalize_step_durations(steps, last_time)
     return [steps[step_id] for step_id in order if step_id in steps]
 
 
 def _raw_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     """提取内容中台事件中的上游 raw payload。"""
-    raw_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+    raw_payload = (
+        payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+    )
     raw = raw_payload.get("raw") if isinstance(raw_payload, dict) else {}
     return raw if isinstance(raw, dict) else {}
 
 
-def _finalize_step_durations(steps: Dict[str, Dict[str, Any]], fallback_end: str) -> None:
+def _finalize_step_durations(
+    steps: Dict[str, Dict[str, Any]], fallback_end: str
+) -> None:
     """补齐节点耗时。"""
     for step in steps.values():
         started_at = str(step.get("started_at") or "")
@@ -638,9 +673,15 @@ def _duration_seconds(started_at: str, finished_at: str) -> float:
     return round((end - start).total_seconds(), 3)
 
 
-def _json_file(path: Path) -> Dict[str, Any]:
-    """读取 JSON 文件。"""
-    return _safe_json(path.read_text(encoding="utf-8")) if path.exists() else {}
+def _format_agent_error(data: Any) -> str:
+    """提取中台 agent 节点返回的原始错误文本。"""
+    if isinstance(data, dict):
+        for key in ("error", "message", "detail"):
+            value = data.get(key)
+            if value:
+                return str(value)
+        return json.dumps(data, ensure_ascii=False)
+    return str(data or "未知上游错误")
 
 
 def _safe_json(text: str) -> Any:
@@ -670,4 +711,6 @@ def _raise_for_stream_error(response: Response) -> None:
     """处理 SSE 接口错误响应。"""
     if response.status_code < 400:
         return
-    raise RuntimeError(f"{response.status_code} {AGENT_TASK_STREAM_PATH}: {response.text[:500]}")
+    raise RuntimeError(
+        f"{response.status_code} {AGENT_TASK_STREAM_PATH}: {response.text[:500]}"
+    )

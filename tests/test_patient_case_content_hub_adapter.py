@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 import pytest
+import json
 
 from story_med.executors.patient_story_generation_executor import PatientStoryGenerationExecutor
 from story_med.executors.patient_story_generation_executor import (
@@ -14,8 +15,11 @@ from story_med.executors.patient_story_generation_executor import (
 from story_med.executors.content_hub_history import (
     content_hub_task_from_create_response,
     detect_content_hub_upstream_error,
+    iter_artifacts,
+    is_adjustment_history_complete,
     is_generation_history_complete,
     normalize_content_hub_history,
+    normalize_content_hub_stream,
 )
 from story_med.config.app_config import StoryMedConfig
 from story_med.models.case_model import StoryCaseConfig
@@ -77,6 +81,41 @@ def test_normalize_content_hub_history_maps_messages_and_artifacts() -> None:
     assert "病例解析完成" in result["messages"][0]["content"]
     assert result["artifacts"]["outline"][0]["oss_key"].endswith("outline.md")
     assert result["artifacts"]["html"][0]["oss_key"].endswith("index.html")
+
+
+def test_normalize_content_hub_stream_maps_files_to_history_structure(tmp_path: Path) -> None:
+    """验证 SSE 文件事件与 history 使用同一 artifacts 结构。"""
+    stream_path = tmp_path / "stream.txt"
+    event = {
+        "payload": {
+            "raw": {
+                "data": {
+                    "type": "file",
+                    "files": [
+                        {
+                            "type": "html",
+                            "title": "最终页面",
+                            "oss_key": "story-med/patient_case/session-1/index.html",
+                        },
+                        {
+                            "type": "png",
+                            "title": "页面截图",
+                            "oss_key": "story-med/patient_case/session-1/index.png",
+                        },
+                    ],
+                }
+            }
+        }
+    }
+    stream_path.write_text(f"data:{json.dumps(event, ensure_ascii=False)}\n", encoding="utf-8")
+
+    result = normalize_content_hub_stream(stream_path)
+
+    assert result["artifacts"]["html"][0]["oss_key"].endswith("index.html")
+    assert [item["file_key"] for item in iter_artifacts(result)] == [
+        "story-med/patient_case/session-1/index.html",
+        "story-med/patient_case/session-1/index.png",
+    ]
 
 
 def test_detect_content_hub_upstream_error_when_raw_status_error() -> None:
@@ -239,6 +278,44 @@ def test_is_history_complete_returns_false_when_html_missing() -> None:
     }
 
     assert is_generation_history_complete(history) is False
+
+
+def test_adjustment_history_ignores_previous_turn_html_when_current_turn_running() -> None:
+    """验证旧 turn 的 HTML 不能把当前 RUNNING turn 判定为完成。"""
+    history = {
+        "raw_history": {
+            "data": {
+                "turns": [
+                    {
+                        "payload": {"message": "第一次修改"},
+                        "status": "COMPLETED",
+                        "frames": [_html_frame("old/index.html")],
+                    },
+                    {
+                        "payload": {"message": "第二次修改"},
+                        "status": "RUNNING",
+                        "frames": [],
+                    },
+                ]
+            }
+        },
+        "artifacts": {"html": [{"oss_key": "old/index.html"}]},
+    }
+
+    assert is_adjustment_history_complete(history, "第二次修改") is False
+
+
+def _html_frame(oss_key: str) -> Dict[str, Any]:
+    """构造包含 HTML 文件的 history frame。"""
+    return {
+        "payload": {
+            "raw": {
+                "data": {
+                    "files": [{"type": "html", "oss_key": oss_key}]
+                }
+            }
+        }
+    }
 
 
 def test_wait_for_terminal_history_retries_until_complete(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

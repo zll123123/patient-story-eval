@@ -9,8 +9,7 @@ from requests import Session
 from story_med.clients.agent_api.agent_task_client import DEFAULT_AGENT_TYPE
 from story_med.config.app_config import StoryMedConfig
 from story_med.config.settings import ASSETS_DIR, EDIT_RUNS_DIR
-from story_med.executors.patient_story_edit_executor import PatientStoryEditExecutor, detect_task_completed, extract_adjustment_files, extract_stream_errors
-from story_med.utils.artifact_cleaner import clear_edit_case_artifacts
+from story_med.executors.patient_story_edit_executor import PatientStoryEditExecutor
 
 
 def run_story_adjustment(
@@ -28,7 +27,6 @@ def run_story_adjustment(
         session=session,
         results_dir=EDIT_RUNS_DIR,
         assets_dir=ASSETS_DIR,
-        clear_case_artifacts=clear_edit_case_artifacts,
     )
     return executor.run_adjustment(
         case_id=case_id,

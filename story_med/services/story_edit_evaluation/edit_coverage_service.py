@@ -7,12 +7,20 @@ import re
 from pathlib import Path
 from typing import Any, Dict
 
-from story_med.clients.agent_api.agent_task_client import find_agent_task_by_remote_task_id
+from story_med.clients.agent_api.agent_task_client import (
+    find_agent_task_by_remote_task_id,
+)
 from story_med.clients.llm.llm_client import call_llm_text
 from story_med.clients.base.http_client import create_session
 from story_med.config.app_config import StoryMedConfig
 from story_med.config.app_config import StoryMedLlmConfig
-from story_med.config.settings import ASSETS_DIR, EDIT_RUNS_DIR, GENERATION_RUNS_DIR, PROMPTS_DIR
+from story_med.config.settings import (
+    ASSETS_DIR,
+    EDIT_RUNS_DIR,
+    GENERATION_RUNS_DIR,
+    PROMPTS_DIR,
+)
+from story_med.utils.timing import TimingCollector
 
 EDIT_COVERAGE_PROMPT_FILE = PROMPTS_DIR / "edit_coverage_validate.md"
 
@@ -51,7 +59,9 @@ def resolve_reference_context(
     )
 
 
-def resolve_reference_artifact_session_id(ref_case_id: str, fallback_session_id: str) -> str:
+def resolve_reference_artifact_session_id(
+    ref_case_id: str, fallback_session_id: str
+) -> str:
     """解析审核对比使用的原始病例最新产物会话 ID。"""
     if _is_complete_reference_session(ref_case_id, fallback_session_id):
         return fallback_session_id
@@ -69,7 +79,9 @@ def read_reference_content(ref_case_id: str, session_id: str) -> str:
     return _read_first_existing(candidates)
 
 
-def read_adjusted_content(edit_case_id: str, session_id: str, adjustment_result: Dict[str, Any]) -> str:
+def read_adjusted_content(
+    edit_case_id: str, session_id: str, adjustment_result: Dict[str, Any]
+) -> str:
     """读取修改后内容。"""
     for asset in adjustment_result.get("downloaded_assets") or []:
         local_path = Path(str(asset.get("local_path") or ""))
@@ -92,25 +104,36 @@ def evaluate_edit_coverage(
     fallback_output_content: str,
 ) -> Dict[str, Any]:
     """只基于最终长图审核编辑修改覆盖情况。"""
-    output_content = _read_adjusted_long_image_content(edit_case["case_id"], session_id, adjustment_result)
-    if not output_content.strip():
-        return _missing_html_validation()
-    parsed = _evaluate_edit_coverage_result(
-        llm_config,
-        edit_case,
-        fallback_input_content,
-        output_content or fallback_output_content,
+    timings = TimingCollector()
+    output_content = _read_adjusted_long_image_content(
+        edit_case["case_id"], session_id, adjustment_result
     )
+    if not output_content.strip():
+        result = _missing_html_validation()
+        result["execution_stages"] = timings.to_list()
+        return result
+    with timings.stage("edit_coverage_audit", "audit", session_id=session_id):
+        parsed = _evaluate_edit_coverage_result(
+            llm_config,
+            edit_case,
+            fallback_input_content,
+            output_content or fallback_output_content,
+        )
     node_result = {"node": "html", "artifact_present": True, **parsed}
     return {
         "metric_name": "修改覆盖",
         "score": parsed.get("score", 0),
         "passed": bool(parsed.get("passed")),
         "required_nodes": ["html"],
-        "artifact_coverage": {"passed": True, "present_nodes": ["html"], "missing_nodes": []},
+        "artifact_coverage": {
+            "passed": True,
+            "present_nodes": ["html"],
+            "missing_nodes": [],
+        },
         "node_results": [node_result],
         "reason": parsed.get("reason", ""),
         "evidence": parsed.get("evidence", ""),
+        "execution_stages": timings.to_list(),
     }
 
 
@@ -123,7 +146,9 @@ def build_edit_coverage_prompt(
     template = EDIT_COVERAGE_PROMPT_FILE.read_text(encoding="utf-8")
     replacements = {
         "{{message}}": str(edit_case.get("message") or ""),
-        "{{evaluation_focus}}": _format_evaluation_focus(edit_case.get("evaluation_focus")),
+        "{{evaluation_focus}}": _format_evaluation_focus(
+            edit_case.get("evaluation_focus")
+        ),
         "{{image_input}}": _truncate(output_content, 12000),
         "{{content_diff}}": "",
         "{{input_content}}": _truncate(input_content, 12000),
@@ -139,7 +164,9 @@ def parse_edit_coverage_result(raw_result: str) -> Dict[str, Any]:
     score_match = re.search(r"Score:\s*(\d+)", raw_result, re.IGNORECASE)
     pass_match = re.search(r"Pass:\s*(true|false)", raw_result, re.IGNORECASE)
     score = int(score_match.group(1)) if score_match else 0
-    reason = _extract_line_value(raw_result, "Reason") or _extract_line_value(raw_result, "Overall_Reason")
+    reason = _extract_line_value(raw_result, "Reason") or _extract_line_value(
+        raw_result, "Overall_Reason"
+    )
     evidence = _extract_line_value(raw_result, "Evidence")
     return {
         "score": score,
@@ -153,7 +180,9 @@ def write_edit_coverage_result(case_id: str, result: Dict[str, Any]) -> None:
     """写入编辑覆盖审核结果。"""
     output_path = EDIT_RUNS_DIR / case_id / "edit_coverage_validation.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    output_path.write_text(
+        json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
 
 def _evaluate_edit_coverage_result(
@@ -190,7 +219,11 @@ def _missing_html_validation() -> Dict[str, Any]:
         "score": 0,
         "passed": False,
         "required_nodes": ["html"],
-        "artifact_coverage": {"passed": False, "present_nodes": [], "missing_nodes": ["html"]},
+        "artifact_coverage": {
+            "passed": False,
+            "present_nodes": [],
+            "missing_nodes": ["html"],
+        },
         "node_results": [
             {
                 "node": "html",
@@ -231,8 +264,16 @@ def _load_run_task_id(ref_case_id: str, session_id: str) -> str:
         return ""
     data = json.loads(path.read_text(encoding="utf-8"))
     session_response = data.get("session_response") if isinstance(data, dict) else {}
-    content_hub_task = session_response.get("content_hub_task") if isinstance(session_response, dict) else {}
-    return str(content_hub_task.get("task_id") or "").strip() if isinstance(content_hub_task, dict) else ""
+    content_hub_task = (
+        session_response.get("content_hub_task")
+        if isinstance(session_response, dict)
+        else {}
+    )
+    return (
+        str(content_hub_task.get("task_id") or "").strip()
+        if isinstance(content_hub_task, dict)
+        else ""
+    )
 
 
 def _lookup_content_hub_task_id(app_config: StoryMedConfig, session_id: str) -> str:

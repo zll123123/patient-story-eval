@@ -60,11 +60,14 @@ def refresh_case_summary(case_id: str) -> Dict[str, Any]:
         "session_id": base_summary.get("session_id", ""),
         "source_mode": base_summary.get("source_mode", ""),
         "success": bool(base_summary.get("success", True)),
-        "agent_total_duration_seconds": base_summary.get("agent_total_duration_seconds", 0.0),
-        "agent_step_timings": base_summary.get("agent_step_timings", {}),
+        "execution_stages": base_summary.get("execution_stages", []),
         "outline_failed_fields": _failed_fields(outline_compare),
         "story_failed_fields": _failed_fields(story_compare),
     }
+    summary["execution_stages"] = _merge_execution_stages(
+        summary["execution_stages"],
+        _load_audit_execution_stages(case_dir),
+    )
 
     _merge_story_compliance_summary(case_dir, summary, audit_overview)
     _merge_image_summary(case_dir, summary, audit_overview)
@@ -106,7 +109,9 @@ def _merge_story_compliance_summary(
     summary["story_compliance_detail"] = validation
 
 
-def _merge_image_summary(case_dir: Path, summary: Dict[str, Any], audit_overview: Dict[str, bool]) -> None:
+def _merge_image_summary(
+    case_dir: Path, summary: Dict[str, Any], audit_overview: Dict[str, bool]
+) -> None:
     """合并图片审核汇总。
 
     Args:
@@ -131,7 +136,9 @@ def _merge_image_summary(case_dir: Path, summary: Dict[str, Any], audit_overview
     image_consistency_path = case_dir / "image_consistency_validation.json"
     if image_consistency_path.exists():
         image_consistency = _read_json(image_consistency_path)
-        audit_overview["image_consistency_passed"] = bool(image_consistency.get("is_passed"))
+        audit_overview["image_consistency_passed"] = bool(
+            image_consistency.get("is_passed")
+        )
         summary["image_consistency"] = {
             "passed": bool(image_consistency.get("is_passed")),
             "issue_count": len(image_consistency.get("issues") or []),
@@ -142,7 +149,9 @@ def _merge_image_summary(case_dir: Path, summary: Dict[str, Any], audit_overview
     if image_compare_path.exists():
         image_compare = _read_json(image_compare_path)
         illustrations = image_compare.get("illustrations") or []
-        passed_count = sum(1 for item in illustrations if _image_result_passed(item.get("result")))
+        passed_count = sum(
+            1 for item in illustrations if _image_result_passed(item.get("result"))
+        )
         total_count = len(illustrations)
         failed_illustration_ids = [
             item.get("image_id")
@@ -162,7 +171,9 @@ def _merge_image_summary(case_dir: Path, summary: Dict[str, Any], audit_overview
     final_image_layout_path = case_dir / "final_image_layout_validation.json"
     if final_image_layout_path.exists():
         final_image_layout = _read_json(final_image_layout_path)
-        audit_overview["final_image_layout_passed"] = bool(final_image_layout.get("is_passed"))
+        audit_overview["final_image_layout_passed"] = bool(
+            final_image_layout.get("is_passed")
+        )
         summary["final_image_layout"] = {
             "status": final_image_layout.get("status", ""),
             "passed": bool(final_image_layout.get("is_passed")),
@@ -170,6 +181,55 @@ def _merge_image_summary(case_dir: Path, summary: Dict[str, Any], audit_overview
             "summary": final_image_layout.get("summary", ""),
         }
         summary["final_image_layout_detail"] = final_image_layout
+
+
+def _load_audit_execution_stages(case_dir: Path) -> List[Dict[str, Any]]:
+    """读取审核产物中的执行节点耗时。"""
+    stage_files = [
+        case_dir / "image_fact_validation.json",
+        case_dir / "story_compliance_validation.json",
+        case_dir / "audit_analysis.json",
+    ]
+    stages: List[Dict[str, Any]] = []
+    for path in stage_files:
+        if not path.exists():
+            continue
+        data = _read_json(path)
+        raw_stages = data.get("execution_stages")
+        if isinstance(raw_stages, list):
+            stages.extend(item for item in raw_stages if isinstance(item, dict))
+    return stages
+
+
+def _merge_execution_stages(
+    current: Any,
+    additional: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """合并执行节点并按节点时间去重。"""
+    merged: List[Dict[str, Any]] = (
+        [item for item in current if isinstance(item, dict)]
+        if isinstance(current, list)
+        else []
+    )
+    seen = {
+        (
+            str(item.get("stage") or ""),
+            str(item.get("started_at") or ""),
+            str(item.get("finished_at") or ""),
+        )
+        for item in merged
+    }
+    for item in additional:
+        key = (
+            str(item.get("stage") or ""),
+            str(item.get("started_at") or ""),
+            str(item.get("finished_at") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(item)
+    return merged
 
 
 def _build_scorecard(
@@ -284,7 +344,9 @@ def _image_design_score(summary: Dict[str, Any]) -> float:
         return 0.0
     if bool(image_design.get("passed")):
         return IMAGE_DESIGN_MAX_SCORE
-    failed_count = _failed_image_count_from_issue_ids(image_design.get("issue_ids") or [], total_count)
+    failed_count = _failed_image_count_from_issue_ids(
+        image_design.get("issue_ids") or [], total_count
+    )
     passed_count = max(total_count - failed_count, 0)
     return round(passed_count / total_count * IMAGE_DESIGN_MAX_SCORE, 2)
 
@@ -316,7 +378,11 @@ def _image_consistency_score(audit_overview: Dict[str, bool]) -> float:
     Returns:
         一致性得分。
     """
-    return IMAGE_CONSISTENCY_MAX_SCORE if audit_overview.get("image_consistency_passed", False) else 0.0
+    return (
+        IMAGE_CONSISTENCY_MAX_SCORE
+        if audit_overview.get("image_consistency_passed", False)
+        else 0.0
+    )
 
 
 def _image_fact_score(summary: Dict[str, Any]) -> float:
@@ -355,7 +421,9 @@ def _final_image_layout_score(summary: Dict[str, Any]) -> float:
         if isinstance(item, dict)
     }
     missing_count = _missing_component_count(issue_mapping.get("key_components_check"))
-    position_count = _position_error_count(issue_mapping.get("component_position_logic"))
+    position_count = _position_error_count(
+        issue_mapping.get("component_position_logic")
+    )
     redundant_count = _redundant_count(issue_mapping.get("redundant_sections_check"))
     score = FINAL_IMAGE_LAYOUT_MAX_SCORE
     score -= missing_count * FINAL_IMAGE_LAYOUT_MISSING_DEDUCTION
@@ -460,7 +528,9 @@ def _load_image_design_total_count(summary: Dict[str, Any]) -> int:
     session_id = str(summary.get("session_id") or "").strip()
     if not case_id or not session_id:
         return 0
-    generate_images_dir = RESULTS_DIR / "assets" / case_id / session_id / "generate_images"
+    generate_images_dir = (
+        RESULTS_DIR / "assets" / case_id / session_id / "generate_images"
+    )
     design_files = sorted(generate_images_dir.glob("*image_design.json"))
     if len(design_files) != 1:
         return 0
@@ -544,4 +614,6 @@ def _write_json(data: Dict[str, Any], output_path: Path) -> None:
         data: 输出对象。
         output_path: 输出路径。
     """
-    output_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    output_path.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+    )

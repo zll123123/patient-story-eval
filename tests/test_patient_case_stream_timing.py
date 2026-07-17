@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from time import sleep
 
-from story_med.clients import agent_task_client
-from story_med.models.case_model import StoryAgentRunResult, StoryStepResult
-from story_med.services.story_generation_evaluation.hard_rule_llm_pipeline import _build_step_timings
+import pytest
+
+from story_med.clients.agent_api import agent_task_client
+from story_med.utils.timing import TimingCollector
 
 
-def test_write_stream_chunks_generates_event_log_and_step_timings(tmp_path: Path) -> None:
+def test_write_stream_chunks_generates_event_log_and_step_timings(
+    tmp_path: Path,
+) -> None:
     """验证 SSE 写入时会生成事件时间戳和节点耗时。"""
     output_path = tmp_path / "session_patient_case_stream.txt"
     chunks = [
@@ -19,58 +23,51 @@ def test_write_stream_chunks_generates_event_log_and_step_timings(tmp_path: Path
     ]
 
     event_count = agent_task_client.write_stream_chunks(chunks, output_path)
-    timing_path = agent_task_client.write_stream_step_timings(
-        output_path.with_name("session_patient_case_stream_events.jsonl"),
-        output_path.with_name("session_patient_case_stream_step_timings.json"),
-    )
-
-    timing = json.loads(timing_path.read_text(encoding="utf-8"))
+    event_log_path = output_path.with_name("session_patient_case_stream_events.jsonl")
+    events = [
+        json.loads(line)
+        for line in event_log_path.read_text(encoding="utf-8").splitlines()
+    ]
+    timing = agent_task_client._extract_step_timings(events)  # type: ignore[attr-defined]
     assert event_count == 2
+    assert timing[0]["title"] == "生成大纲"
+    assert timing[0]["status"] == "done"
+    assert "received_at" in event_log_path.read_text()
+
+
+def test_write_stream_chunks_raises_when_total_timeout_reached(tmp_path: Path) -> None:
+    """验证 SSE 总时长超限时抛出可转 history 的超时异常。"""
+    output_path = tmp_path / "stream.txt"
+
+    def chunks():
+        yield 'data: {"message_type":"HEARTBEAT"}\n\n'
+        sleep(0.02)
+        yield 'data: {"message_type":"HEARTBEAT"}\n\n'
+
+    with pytest.raises(TimeoutError, match="history 恢复"):
+        agent_task_client.write_stream_chunks(chunks(), output_path, timeout_seconds=0.01)
     assert output_path.exists()
-    assert timing["steps"][0]["title"] == "生成大纲"
-    assert timing["steps"][0]["status"] == "done"
-    assert "received_at" in (output_path.with_name("session_patient_case_stream_events.jsonl").read_text())
 
 
-def test_build_step_timings_uses_patient_case_internal_timings() -> None:
-    """验证 summary 优先使用解析版 Agent 内部节点耗时。"""
-    run_result = StoryAgentRunResult(
-        case_id="SM_TEST",
-        description="单测",
-        session_id="session-1",
-        success=True,
-        steps=[
-            StoryStepResult(
-                step_name="stream_agent_task",
-                endpoint="/api/agent/tasks/stream",
-                request_payload={},
-                status_code=200,
-                response_body={
-                    "agent_node_timings": {
-                        "steps": [
-                            {
-                                "title": "生成故事正文",
-                                "status": "done",
-                                "started_at": "2026-07-02T00:00:00+00:00",
-                                "finished_at": "2026-07-02T00:00:03+00:00",
-                                "duration_seconds": 3.0,
-                            }
-                        ]
-                    }
-                },
-                response_data={},
-            )
+def test_timing_collector_normalizes_agent_nodes() -> None:
+    """验证中台节点可以进入统一 execution_stages 结构。"""
+    collector = TimingCollector()
+    collector.add_agent_nodes(
+        [
+            {
+                "title": "生成故事正文",
+                "status": "done",
+                "started_at": "2026-07-02T00:00:00+00:00",
+                "finished_at": "2026-07-02T00:00:03+00:00",
+                "duration_seconds": 3.0,
+            }
         ],
-        session_response={},
-        outline_response={},
-        story_response={},
-        images_response={},
-        final_image_response={},
-        downloaded_assets=[],
+        task_id="task-1",
+        session_id="session-1",
     )
 
-    timings = _build_step_timings(run_result)
-
-    assert timings["generate_story"]["label"] == "获取故事"
-    assert timings["generate_story"]["duration_seconds"] == 3.0
-    assert timings["generate_story"]["agent_title"] == "生成故事正文"
+    stage = collector.to_list()[0]
+    assert stage["stage"] == "生成故事正文"
+    assert stage["category"] == "agent_node"
+    assert stage["status"] == "success"
+    assert stage["duration_seconds"] == 3.0

@@ -105,8 +105,40 @@ uv run story-med patient-story-audit \
 
 ### 5. 执行多轮编辑评测
 
+完整编辑评测要求 `edit_dialogue_cases.yaml` 中引用的原始患者故事已经完成生成，并且对应产物存在于 `story_med/results/assets/{ref_clinical_case_id}/`。
+
+执行全部编辑测试数据：
+
 ```bash
-uv run story-med patient-story-edit-full --case-ids "EDG_001,EDG_002"
+UV_CACHE_DIR=.uv-cache uv run story-med patient-story-edit-full
+```
+
+只执行指定编辑用例：
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run story-med patient-story-edit-full \
+  --case-ids "EDG_001,EDG_002"
+```
+
+`patient-story-edit-full` 会执行：
+
+1. 读取原始患者故事最新产物
+2. 按对话轮次调用编辑 Agent
+3. 根据已通过轮次构造当前轮 `evaluation_focus`
+4. 全部轮次执行成功后，仅对最终轮执行编辑覆盖审核
+5. 对失败结果执行编辑归因
+
+如果编辑执行已经完成，只重跑编辑审核和归因：
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run story-med patient-story-edit-audit
+```
+
+只重跑指定编辑用例审核：
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run story-med patient-story-edit-audit \
+  --case-ids "EDG_001,EDG_002"
 ```
 
 ## 完整链路执行
@@ -166,9 +198,12 @@ uv run story-med patient-story-full \
 ### 编辑评测链路
 
 1. 读取 `edit_dialogue_cases.yaml`
-2. 基于已有患者故事产物执行多轮编辑
-3. 对最终长图执行修改覆盖评估
-4. 对失败轮次执行编辑归因
+2. 根据 `ref_clinical_case_id` 查找原始患者故事最新产物
+3. 基于原始患者故事产物执行多轮编辑
+4. 对每轮或最终轮长图执行修改覆盖评估
+5. 对失败轮次执行编辑归因
+
+编辑执行结果写入 `story_med/results/edit_runs/`，编辑审核和归因结果写入 `story_med/results/edit_audits/`。
 
 ## 输入数据
 

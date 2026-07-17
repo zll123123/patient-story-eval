@@ -10,7 +10,10 @@ from story_med.clients.llm.multimodal_llm_client import call_multimodal_json
 from story_med.config.settings import PROMPTS_DIR
 from story_med.config.app_config import StoryMedVisionConfig
 from story_med.models.case_model import StoryCaseConfig
-from story_med.services.clinical_case_preparation.clinical_extract_baseline_service import load_clinical_baseline
+from story_med.services.clinical_case_preparation.clinical_extract_baseline_service import (
+    load_clinical_baseline,
+)
+from story_med.utils.timing import TimingCollector
 
 
 def validate_final_image_layout(
@@ -18,6 +21,7 @@ def validate_final_image_layout(
     case: StoryCaseConfig,
     asset_dir: Path,
     image_design: Dict[str, Any],
+    timings: TimingCollector | None = None,
 ) -> Dict[str, Any]:
     """审核最终长图是否满足一图读懂的结构与顺序要求。"""
     prompt_file = PROMPTS_DIR / "final_image_layout_validate.md"
@@ -34,10 +38,17 @@ def validate_final_image_layout(
         "image_design": image_design,
     }
     prompt = _final_image_layout_prompt(prompt_file, payload)
-    result = call_multimodal_json(config, prompt, [final_image], use_thumbnail=False)
+    collector = timings or TimingCollector()
+    with collector.stage(
+        "final_image_layout_audit", "audit", metadata={"image_path": str(final_image)}
+    ):
+        result = call_multimodal_json(
+            config, prompt, [final_image], use_thumbnail=False
+        )
     return {
         "status": "success",
         "image_path": str(final_image),
+        "execution_stages": collector.to_list(),
         **result,
     }
 
@@ -45,7 +56,9 @@ def validate_final_image_layout(
 def _final_image_layout_prompt(prompt_file: Path, payload: Dict[str, Any]) -> str:
     """拼接最终长图结构审核 prompt。"""
     template = prompt_file.read_text(encoding="utf-8")
-    return f"{template}\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
+    return (
+        f"{template}\n```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
+    )
 
 
 def _find_single_image(directory: Path) -> Path:

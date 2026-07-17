@@ -53,7 +53,12 @@ def _compact_results(results: list[dict]) -> list[dict]:
             "overall_passed": result.get("overall_passed"),
             "turn_count": result.get("turn_count"),
             "turns": [
-                {"turn_id": turn.get("turn_id"), "passed": turn.get("passed"), "score": turn.get("score")}
+                {
+                    "turn_id": turn.get("turn_id"),
+                    "execution_status": turn.get("execution_status"),
+                    "audit_status": turn.get("audit_status", "not_run"),
+                    "score": turn.get("score") if turn.get("audit_status") else None,
+                }
                 for turn in result.get("turn_results", [])
             ],
             "error": result.get("error", ""),

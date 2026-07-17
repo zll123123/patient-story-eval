@@ -19,17 +19,10 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
             "session_id": "session-1",
             "source_mode": "results_assets",
             "success": True,
-            "agent_total_duration_seconds": 12.5,
-            "agent_step_timings": {
-                "generate_outline": {
-                    "label": "获取大纲",
-                    "duration_seconds": 1.1,
-                },
-                "generate_story": {
-                    "label": "获取故事",
-                    "duration_seconds": 2.2,
-                },
-            },
+            "execution_stages": [
+                {"stage": "generate_outline", "duration_seconds": 1.1},
+                {"stage": "generate_story", "duration_seconds": 2.2},
+            ],
         },
     )
     _write_json(
@@ -52,7 +45,10 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
             },
         },
     )
-    _write_json(case_dir / "image_design_validation.json", {"is_passed": True, "summary": "ok", "issues": []})
+    _write_json(
+        case_dir / "image_design_validation.json",
+        {"is_passed": True, "summary": "ok", "issues": []},
+    )
     _write_json(
         case_dir / "story_compliance_validation.json",
         {
@@ -62,7 +58,10 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
             "issues": [{"issue_id": "privacy_leak"}],
         },
     )
-    _write_json(case_dir / "image_consistency_validation.json", {"is_passed": False, "summary": "bad", "issues": [{"issue_id": "1"}]})
+    _write_json(
+        case_dir / "image_consistency_validation.json",
+        {"is_passed": False, "summary": "bad", "issues": [{"issue_id": "1"}]},
+    )
     _write_json(
         case_dir / "image_fact_validation.json",
         {
@@ -91,7 +90,9 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
             ],
         },
     )
-    generate_images_dir = tmp_path / "assets" / "SM_TEST" / "session-1" / "generate_images"
+    generate_images_dir = (
+        tmp_path / "assets" / "SM_TEST" / "session-1" / "generate_images"
+    )
     generate_images_dir.mkdir(parents=True, exist_ok=True)
     _write_json(
         generate_images_dir / "generate_images_6_image_design.json",
@@ -137,14 +138,17 @@ def test_refresh_case_summary_compacts_pass_fields(tmp_path: Path) -> None:
         "final_image_layout_score": 15.0,
     }
     assert result["scorecard"]["total_score"] == 65.0
-    assert result["agent_total_duration_seconds"] == 12.5
-    assert result["agent_step_timings"]["generate_outline"]["duration_seconds"] == 1.1
-    assert result["agent_step_timings"]["generate_story"]["duration_seconds"] == 2.2
+    assert result["execution_stages"][0]["stage"] == "generate_outline"
+    assert result["execution_stages"][0]["duration_seconds"] == 1.1
+    assert result["execution_stages"][1]["stage"] == "generate_story"
+    assert result["execution_stages"][1]["duration_seconds"] == 2.2
     assert "outline_passed" not in result
     assert "story_passed" not in result
 
 
-def test_refresh_case_summary_scores_image_design_from_design_total_when_image_fact_blocked(tmp_path: Path) -> None:
+def test_refresh_case_summary_scores_image_design_from_design_total_when_image_fact_blocked(
+    tmp_path: Path,
+) -> None:
     """验证图片设计得分不再依赖 image_fact 成功返回。"""
     case_dir = tmp_path / "tmp" / "SM_TEST"
     _write_json(
@@ -157,8 +161,14 @@ def test_refresh_case_summary_scores_image_design_from_design_total_when_image_f
             "success": True,
         },
     )
-    _write_json(case_dir / "outline_hard_rule_compare.json", {"overall_passed": True, "field_results": {"a": {"passed": True}}})
-    _write_json(case_dir / "story_hard_rule_compare.json", {"overall_passed": True, "field_results": {"a": {"passed": True}}})
+    _write_json(
+        case_dir / "outline_hard_rule_compare.json",
+        {"overall_passed": True, "field_results": {"a": {"passed": True}}},
+    )
+    _write_json(
+        case_dir / "story_hard_rule_compare.json",
+        {"overall_passed": True, "field_results": {"a": {"passed": True}}},
+    )
     _write_json(
         case_dir / "image_design_validation.json",
         {
@@ -178,7 +188,9 @@ def test_refresh_case_summary_scores_image_design_from_design_total_when_image_f
             "final_image": {},
         },
     )
-    generate_images_dir = tmp_path / "assets" / "SM_TEST" / "session-1" / "generate_images"
+    generate_images_dir = (
+        tmp_path / "assets" / "SM_TEST" / "session-1" / "generate_images"
+    )
     generate_images_dir.mkdir(parents=True, exist_ok=True)
     _write_json(
         generate_images_dir / "generate_images_6_image_design.json",

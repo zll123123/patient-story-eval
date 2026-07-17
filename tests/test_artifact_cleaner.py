@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from story_med.utils import artifact_cleaner
 from story_med.utils.artifact_cleaner import should_clear_evaluation_artifacts, target_case_ids_for_cleanup
 
@@ -50,6 +52,17 @@ def test_target_case_ids_for_cleanup_supports_multiple_delimiters() -> None:
     assert target_case_ids_for_cleanup(env) == ["SM_001", "SM_002", "SM_003", "SM_004"]
 
 
+def test_target_case_ids_for_cleanup_skips_audit_only() -> None:
+    """验证 audit_only 即使指定 case 也不会清理已有生成产物。"""
+    env = {
+        "STORY_MED_RUN_DEEPEVAL_PIPELINE": "true",
+        "STORY_MED_DEEPEVAL_MODE": "audit_only",
+        "STORY_MED_CASE_IDS": "SM_001,SM_002",
+    }
+
+    assert target_case_ids_for_cleanup(env) == []
+
+
 def test_clear_case_evaluation_artifacts_removes_single_case_directories(
     monkeypatch,
     tmp_path: Path,
@@ -75,3 +88,35 @@ def test_clear_case_evaluation_artifacts_removes_single_case_directories(
     artifact_cleaner.clear_case_evaluation_artifacts(case_id)
 
     assert all(not path.exists() for path in targets)
+
+
+def test_clear_edit_dialogue_case_artifacts_removes_only_edit_directories(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """验证编辑 case 清理不会删除原始 SM case 产物。"""
+    monkeypatch.setattr(artifact_cleaner, "EDIT_RUNS_DIR", tmp_path / "edit_runs")
+    monkeypatch.setattr(artifact_cleaner, "ASSETS_DIR", tmp_path / "assets")
+    monkeypatch.setattr(artifact_cleaner, "EDIT_AUDITS_DIR", tmp_path / "edit_audits")
+    edit_case = "EDG_001"
+    original_case = "SM_001"
+    targets = [
+        artifact_cleaner.EDIT_RUNS_DIR / f"{edit_case}_T01",
+        artifact_cleaner.ASSETS_DIR / f"{edit_case}_T01",
+        artifact_cleaner.EDIT_AUDITS_DIR / edit_case,
+    ]
+    original = artifact_cleaner.ASSETS_DIR / original_case
+    for path in targets + [original]:
+        path.mkdir(parents=True, exist_ok=True)
+        (path / "stub.txt").write_text("x", encoding="utf-8")
+
+    artifact_cleaner.clear_edit_dialogue_case_artifacts(edit_case)
+
+    assert all(not path.exists() for path in targets)
+    assert original.exists()
+
+
+def test_clear_edit_dialogue_case_artifacts_rejects_original_case_id() -> None:
+    """验证编辑清理函数拒绝 SM case ID。"""
+    with pytest.raises(ValueError, match="EDG_"):
+        artifact_cleaner.clear_edit_dialogue_case_artifacts("SM_001")

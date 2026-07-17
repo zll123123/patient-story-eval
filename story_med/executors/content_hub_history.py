@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any, Dict, List
 
 
@@ -53,10 +54,58 @@ def is_generation_history_complete(history: Dict[str, Any]) -> bool:
     return all(isinstance(artifacts.get(group), list) and bool(artifacts.get(group)) for group in required_groups)
 
 
-def is_adjustment_history_complete(history: Dict[str, Any]) -> bool:
-    """判断编辑 history 是否已包含最终长图产物。"""
-    artifacts = history.get("artifacts") or {}
-    return isinstance(artifacts, dict) and isinstance(artifacts.get("html"), list) and bool(artifacts.get("html"))
+def is_adjustment_history_complete(
+    history: Dict[str, Any], expected_message: str
+) -> bool:
+    """判断当前编辑 turn 是否完成并产出最终长图。
+
+    Args:
+        history: 标准化后的 history。
+        expected_message: 当前编辑 turn 的用户修改要求。
+
+    Returns:
+        只有当前 turn 为 COMPLETED 且该 turn 自己包含 HTML 文件时才返回 True。
+    """
+    turn = _latest_turn_by_message(history, expected_message)
+    if not turn or str(turn.get("status") or "").upper() != "COMPLETED":
+        return False
+    return _turn_contains_html(turn)
+
+
+def _latest_turn_by_message(
+    history: Dict[str, Any], expected_message: str
+) -> Dict[str, Any]:
+    """从 history 中找到当前修改消息对应的最新 turn。"""
+    raw_history = history.get("raw_history")
+    data = raw_history.get("data") if isinstance(raw_history, dict) else {}
+    turns = data.get("turns") if isinstance(data, dict) else []
+    if not isinstance(turns, list):
+        return {}
+    matches: List[Dict[str, Any]] = []
+    for turn in turns:
+        if not isinstance(turn, dict):
+            continue
+        payload = turn.get("payload")
+        message = payload.get("message") if isinstance(payload, dict) else ""
+        if str(message or "") == expected_message:
+            matches.append(turn)
+    return matches[-1] if matches else {}
+
+
+def _turn_contains_html(turn: Dict[str, Any]) -> bool:
+    """判断单个 turn 的文件事件是否包含 HTML。"""
+    for frame in turn.get("frames") or []:
+        raw = frame_raw(frame) if isinstance(frame, dict) else {}
+        data = raw.get("data") if isinstance(raw.get("data"), dict) else {}
+        files = data.get("files") if isinstance(data, dict) else []
+        for file_item in files if isinstance(files, list) else []:
+            if not isinstance(file_item, dict):
+                continue
+            file_type = str(file_item.get("type") or "").lower()
+            file_key = str(file_item.get("oss_key") or "").lower()
+            if file_type == "html" or file_key.endswith(".html"):
+                return True
+    return False
 
 
 def normalize_content_hub_history(body: Dict[str, Any]) -> Dict[str, Any]:
@@ -73,6 +122,58 @@ def normalize_content_hub_history(body: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(files, list):
             _append_history_files(artifacts, files)
     return {"messages": messages, "artifacts": artifacts, "raw_history": body}
+
+
+def normalize_content_hub_stream(stream_path: Path) -> Dict[str, Any]:
+    """将 SSE 文件事件转成与 history 一致的产物结构。
+
+    Args:
+        stream_path: SSE 原始事件文件路径。
+
+    Returns:
+        与 ``normalize_content_hub_history`` 相同的结构。
+    """
+    messages: List[Dict[str, str]] = []
+    artifacts: Dict[str, List[Dict[str, Any]]] = {}
+    if not stream_path.exists():
+        return {"messages": messages, "artifacts": artifacts, "raw_stream": {}}
+    for line in stream_path.read_text(encoding="utf-8").splitlines():
+        if not line.startswith("data:"):
+            continue
+        event = _parse_stream_event(line[5:].strip())
+        raw_payload = _stream_raw_payload(event)
+        data = raw_payload.get("data")
+        if not isinstance(data, dict):
+            continue
+        content = str(data.get("content") or "").strip()
+        if content:
+            messages.append({"role": "ai", "content": content})
+        files = data.get("files")
+        if isinstance(files, list):
+            _append_history_files(artifacts, files)
+    return {
+        "messages": messages,
+        "artifacts": artifacts,
+        "raw_stream": {"stream_path": str(stream_path)},
+    }
+
+
+def _parse_stream_event(text: str) -> Dict[str, Any]:
+    """解析单条 SSE JSON 数据。"""
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _stream_raw_payload(event: Dict[str, Any]) -> Dict[str, Any]:
+    """提取 SSE 事件中的上游 raw payload。"""
+    payload = event.get("payload")
+    if not isinstance(payload, dict):
+        return {}
+    raw = payload.get("raw")
+    return raw if isinstance(raw, dict) else {}
 
 
 def detect_content_hub_upstream_error(body: Dict[str, Any]) -> Dict[str, str]:

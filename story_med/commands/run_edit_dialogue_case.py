@@ -16,6 +16,7 @@ from story_med.config.app_config import load_app_config
 from story_med.config.app_config import load_llm_config
 from story_med.services.story_edit_evaluation.edit_dialogue_pipeline import run_edit_dialogue_case
 from story_med.services.clinical_case_preparation.yaml_case_service import load_edit_dialogue_cases
+from story_med.utils.artifact_cleaner import clear_edit_dialogue_cases_artifacts
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,6 +39,7 @@ def main(argv: list[str] | None = None) -> int:
     """
     args = build_parser().parse_args(argv)
     case_ids = _resolve_case_ids(args.case_id, args.case_ids)
+    clear_edit_dialogue_cases_artifacts(case_ids)
     app_config = load_app_config()
     llm_config = load_llm_config()
     results = [run_edit_dialogue_case(app_config, llm_config, case_id) for case_id in case_ids]
@@ -70,10 +72,10 @@ def _compact_results(results: list[dict]) -> list[dict]:
             "turns": [
                 {
                     "turn_id": turn.get("turn_id"),
-                    "passed": turn.get("passed"),
-                    "score": turn.get("score"),
+                    "execution_status": turn.get("execution_status"),
+                    "audit_status": turn.get("audit_status", "not_run"),
+                    "score": turn.get("score") if turn.get("audit_status") else None,
                     "included_previous_turns": turn.get("included_previous_turns"),
-                    "excluded_failed_turns": turn.get("excluded_failed_turns"),
                 }
                 for turn in result.get("turn_results", [])
             ],

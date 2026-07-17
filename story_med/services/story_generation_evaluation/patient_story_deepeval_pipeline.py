@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any, Dict, List
 
 from story_med.executors.patient_story_generation_executor import PatientStoryGenerationExecutor
@@ -15,12 +16,14 @@ from story_med.config.app_config import load_vision_config
 from story_med.models.case_model import StoryCaseConfig
 from story_med.services.story_generation_evaluation.audit_analysis_service import run_case_audit_attribution
 from story_med.services.story_generation_evaluation.hard_rule_llm_pipeline import (
-    run_case_compare_pipeline,
     run_existing_assets_compare_pipeline,
 )
 from story_med.services.story_generation_evaluation.image_audit_pipeline import run_case_latest_image_audit
 from story_med.services.story_generation_evaluation.summary_pipeline import refresh_case_summary
 from story_med.services.story_generation_evaluation.story_compliance_pipeline import run_story_compliance_validation
+from story_med.services.story_generation_evaluation.story_generation_pipeline import (
+    run_story_generation,
+)
 from story_med.services.clinical_case_preparation.yaml_case_service import load_story_cases
 
 
@@ -61,17 +64,16 @@ def run_single_case(
 ) -> Dict[str, Any]:
     """执行单个 case 的生成、审核、归因和 DeepEval 评估。"""
     try:
-        summary = _run_generation_case(
+        session_id = _run_generation_case(
             image_adapter=image_adapter,
-            llm_config=llm_config,
             case=case,
             mode=mode,
-            include_visual_steps=include_visual_steps,
         )
         _run_audit_case(
             llm_config=llm_config,
             vision_config=vision_config,
             case=case,
+            session_id=session_id,
             run_attribution=run_attribution,
         )
         summary = refresh_case_summary(case.case_id)
@@ -88,31 +90,56 @@ def run_single_case(
 
 def _run_generation_case(
     image_adapter: PatientStoryGenerationExecutor,
-    llm_config: Any,
     case: StoryCaseConfig,
     mode: str,
-    include_visual_steps: bool,
-) -> Dict[str, Any]:
+) -> str:
     """执行单个 case 的生成流程。"""
     if mode == "image_case_pipeline":
-        run_case_compare_pipeline(image_adapter, llm_config, case, include_visual_steps=True)
+        run_result = run_story_generation(image_adapter, case)
+        return run_result.session_id
     else:
-        run_existing_assets_compare_pipeline(llm_config, case, _existing_session_id(case))
-    return refresh_case_summary(case.case_id)
+        return _existing_session_id(case)
 
 
 def _run_audit_case(
     llm_config: Any,
     vision_config: Any,
     case: StoryCaseConfig,
+    session_id: str,
     run_attribution: bool,
 ) -> None:
-    """执行单个 case 的图片审核和归因。"""
-    run_case_latest_image_audit(vision_config, case)
-    run_story_compliance_validation(llm_config, case)
+    """并发执行审核节点，全部完成后再执行归因。"""
+    futures: Dict[str, Future[Any]] = {}
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures["hard_rule_audit"] = executor.submit(
+            run_existing_assets_compare_pipeline,
+            llm_config,
+            case,
+            session_id,
+        )
+        futures["image_audit"] = executor.submit(
+            run_case_latest_image_audit, vision_config, case, session_id
+        )
+        futures["story_compliance_audit"] = executor.submit(
+            run_story_compliance_validation, llm_config, case, session_id
+        )
+        errors = _collect_audit_errors(futures)
+    if errors:
+        raise RuntimeError("审核节点执行失败: " + "; ".join(errors))
     refresh_case_summary(case.case_id)
     if run_attribution:
         run_case_audit_attribution(llm_config, case.case_id)
+
+
+def _collect_audit_errors(futures: Dict[str, Future[Any]]) -> List[str]:
+    """等待所有审核节点并收集异常，避免单个失败提前中断其他节点。"""
+    errors: List[str] = []
+    for stage_name, future in futures.items():
+        try:
+            future.result()
+        except Exception as exc:
+            errors.append(f"{stage_name}: {exc}")
+    return errors
 
 
 def _build_failed_pipeline_summary(case_id: str, error: str) -> Dict[str, Any]:

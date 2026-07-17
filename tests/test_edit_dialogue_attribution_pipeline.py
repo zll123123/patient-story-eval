@@ -93,6 +93,9 @@ def _turn_result(turn_id: int, passed: bool) -> dict[str, Any]:
         "intent": {"type": "modify", "targets": [f"target-{turn_id}"]},
         "involved_agents": ["html"],
         "effective_evaluation_focus": [{"id": f"T{turn_id}", "description": f"focus-{turn_id}"}],
+        "execution_status": "success",
+        "execution_passed": True,
+        "audit_status": "passed" if passed else "failed",
         "passed": passed,
         "adjustment_result": {
             "success": True,

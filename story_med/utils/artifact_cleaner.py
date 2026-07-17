@@ -43,6 +43,8 @@ def target_case_ids_for_cleanup(env: Mapping[str, str]) -> list[str]:
     """
     if env.get("STORY_MED_RUN_DEEPEVAL_PIPELINE", "").lower() != "true":
         return []
+    if env.get("STORY_MED_DEEPEVAL_MODE", "").lower() == "audit_only":
+        return []
     raw_value = env.get("STORY_MED_CASE_IDS", "").strip()
     if not raw_value:
         return []
@@ -66,15 +68,36 @@ def clear_case_evaluation_artifacts(case_id: str) -> None:
             shutil.rmtree(path)
 
 
-def clear_edit_case_artifacts(case_id: str) -> None:
-    """清理单个编辑测试用例的历史产物。
+def clear_edit_dialogue_case_artifacts(case_id: str) -> None:
+    """清理单个编辑对话用例的全部历史产物。
 
     Args:
-        case_id: 编辑测试用例 ID。
+        case_id: 编辑对话用例 ID，必须以 EDG_ 开头。
     """
-    for path in [EDIT_RUNS_DIR / case_id, ASSETS_DIR / case_id]:
+    _validate_edit_case_id(case_id)
+    for path in [EDIT_AUDITS_DIR / case_id]:
         if path.exists():
             shutil.rmtree(path)
+    for root in [EDIT_RUNS_DIR, ASSETS_DIR]:
+        for path in root.glob(f"{case_id}_T*"):
+            if path.is_dir():
+                shutil.rmtree(path)
+
+
+def clear_edit_dialogue_cases_artifacts(case_ids: list[str]) -> None:
+    """清理多个编辑对话用例的全部历史产物。
+
+    Args:
+        case_ids: 编辑对话用例 ID 列表。
+    """
+    for case_id in case_ids:
+        clear_edit_dialogue_case_artifacts(case_id)
+
+
+def _validate_edit_case_id(case_id: str) -> None:
+    """校验编辑用例 ID，防止误删原始病例目录。"""
+    if not re.fullmatch(r"EDG_[A-Za-z0-9_-]+", case_id.strip()):
+        raise ValueError(f"非法编辑用例 ID，必须以 EDG_ 开头: {case_id}")
 
 
 def _target_directories() -> list[Path]:

@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
 import pytest
 
 from story_med.config.app_config import load_vision_config
-from story_med.services.clinical_case_preparation.yaml_case_service import load_story_cases
+from story_med.services.clinical_case_preparation.yaml_case_service import (
+    load_story_cases,
+)
 from story_med.services.story_generation_evaluation.image_audit_pipeline import (
     _build_success_report,
     run_case_latest_image_audit,
@@ -22,7 +25,11 @@ def test_latest_patient_story_images_compare() -> None:
         pytest.skip("需要设置 STORY_MED_RUN_IMAGE_COMPARE=true 才执行图片多模态评估")
 
     cases = load_story_cases()
-    case = next(item for item in cases if item.case_id == os.getenv("STORY_MED_IMAGE_CASE_ID", "SM_001"))
+    case = next(
+        item
+        for item in cases
+        if item.case_id == os.getenv("STORY_MED_IMAGE_CASE_ID", "SM_001")
+    )
     report = run_latest_image_audit(load_vision_config(), case)
 
     assert report["status"] in {"success", "blocked"}
@@ -39,7 +46,9 @@ def test_seed_cases_latest_images_compare() -> None:
         if item.strip()
     }
     cases = load_story_cases()
-    selected_cases = [case for case in cases if not target_case_ids or case.case_id in target_case_ids]
+    selected_cases = [
+        case for case in cases if not target_case_ids or case.case_id in target_case_ids
+    ]
     assert selected_cases, "未找到需要执行图片评估的 case"
 
     config = load_vision_config()
@@ -52,18 +61,24 @@ def test_seed_cases_latest_images_compare() -> None:
     assert not failures, failures
 
 
-def test_build_success_report_writes_image_design_validation_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_build_success_report_writes_image_design_validation_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """验证图片设计审核结果单独落盘并参与总通过判断。"""
     from story_med.models.case_model import StoryCaseConfig
-    from story_med.services.story_generation_evaluation import image_audit_pipeline as pipeline
+    from story_med.services.story_generation_evaluation import (
+        image_audit_pipeline as pipeline,
+    )
 
     case = StoryCaseConfig(
         case_id="SM_TEST",
         description="test",
         creative_brief="brief",
         case_facts="facts",
+        image_dir="case-images",
         hard_rules={},
     )
+    monkeypatch.setattr(pipeline, "_patient_case_baseline", lambda case: "baseline")
 
     asset_dir = tmp_path / "assets" / case.case_id / "session-1"
     (asset_dir / "generate_images").mkdir(parents=True)
@@ -72,43 +87,74 @@ def test_build_success_report_writes_image_design_validation_file(monkeypatch: p
         '{"illustrations":[{"id":1,"image_path":"a.png","source_text":"text"}]}',
         encoding="utf-8",
     )
-    (asset_dir / "generate_images" / "generate_images_1_a.png").write_text("x", encoding="utf-8")
-    (asset_dir / "generate_final_image" / "generate_final_image_1_index.png").write_text("x", encoding="utf-8")
+    (asset_dir / "generate_images" / "generate_images_1_a.png").write_text(
+        "x", encoding="utf-8"
+    )
+    (
+        asset_dir / "generate_final_image" / "generate_final_image_1_index.png"
+    ).write_text("x", encoding="utf-8")
 
     monkeypatch.setattr(pipeline, "RESULTS_DIR", tmp_path / "assets_root")
     monkeypatch.setattr(pipeline, "STORY_AUDITS_DIR", tmp_path / "tmp")
-    monkeypatch.setattr(pipeline, "_read_image_design", lambda _: {"illustrations": [{"id": 1, "image_path": "a.png"}]})
-    monkeypatch.setattr(pipeline, "_build_consistency_images_payload", lambda asset_dir, image_design: [{"local_path": "dummy.png"}])
+    monkeypatch.setattr(
+        pipeline,
+        "_read_image_design",
+        lambda _: {"illustrations": [{"id": 1, "image_path": "a.png"}]},
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_build_consistency_images_payload",
+        lambda asset_dir, image_design: [{"local_path": "dummy.png"}],
+    )
     monkeypatch.setattr(
         pipeline,
         "_validate_image_design",
-        lambda case, asset_dir, image_design: {"is_passed": False, "summary": "bad design", "issues": [{"issue_id": "1"}]},
+        lambda case, asset_dir, image_design, timings: {
+            "is_passed": False,
+            "summary": "bad design",
+            "issues": [{"issue_id": "1"}],
+        },
     )
     monkeypatch.setattr(
         pipeline,
         "_audit_image_consistency",
-        lambda config, asset_dir, image_design: {"is_passed": False, "summary": "bad", "issues": [{"issue_id": "2"}]},
+        lambda config, asset_dir, image_design, timings: {
+            "is_passed": False,
+            "summary": "bad",
+            "issues": [{"issue_id": "2"}],
+        },
     )
     monkeypatch.setattr(
         pipeline,
         "_compare_illustrations",
-        lambda config, case, asset_dir, image_design: [{"result": {"overall_passed": True}}],
+        lambda config, case, asset_dir, image_design, timings: [
+            {"result": {"overall_passed": True}}
+        ],
     )
     monkeypatch.setattr(
         pipeline,
         "validate_final_image_layout",
-        lambda config, case, asset_dir, image_design: {"status": "success", "is_passed": True, "summary": "ok", "issues": []},
+        lambda config, case, asset_dir, image_design, timings: {
+            "status": "success",
+            "is_passed": True,
+            "summary": "ok",
+            "issues": [],
+        },
     )
     monkeypatch.setattr(
         pipeline,
         "_compare_final_image",
-        lambda config, case, asset_dir, image_design: {"result": {"overall_passed": True}},
+        lambda config, case, asset_dir, image_design, timings: {
+            "result": {"overall_passed": True}
+        },
     )
 
     class DummyConfig:
         pass
 
-    report = _build_success_report(DummyConfig(), case, "session-1")
+    report = _build_success_report(
+        DummyConfig(), case, "session-1", pipeline.TimingCollector()
+    )
 
     validation_file = tmp_path / "tmp" / case.case_id / "image_design_validation.json"
     assert validation_file.exists()
@@ -117,10 +163,14 @@ def test_build_success_report_writes_image_design_validation_file(monkeypatch: p
     assert report["overall_passed"] is True
 
 
-def test_build_success_report_writes_image_consistency_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_build_success_report_writes_image_consistency_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """验证图片一致性审核结果单独落盘。"""
     from story_med.models.case_model import StoryCaseConfig
-    from story_med.services.story_generation_evaluation import image_audit_pipeline as pipeline
+    from story_med.services.story_generation_evaluation import (
+        image_audit_pipeline as pipeline,
+    )
 
     case = StoryCaseConfig(
         case_id="SM_TEST",
@@ -132,46 +182,83 @@ def test_build_success_report_writes_image_consistency_file(monkeypatch: pytest.
 
     monkeypatch.setattr(pipeline, "RESULTS_DIR", tmp_path / "assets_root")
     monkeypatch.setattr(pipeline, "STORY_AUDITS_DIR", tmp_path / "tmp")
-    monkeypatch.setattr(pipeline, "_read_image_design", lambda _: {"illustrations": [{"id": 1, "image_path": "a.png"}]})
-    monkeypatch.setattr(pipeline, "_build_consistency_images_payload", lambda asset_dir, image_design: [{"local_path": "dummy.png"}])
-    monkeypatch.setattr(pipeline, "_validate_image_design", lambda case, asset_dir, image_design: {"is_passed": True, "summary": "ok", "issues": []})
+    monkeypatch.setattr(
+        pipeline,
+        "_read_image_design",
+        lambda _: {"illustrations": [{"id": 1, "image_path": "a.png"}]},
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_build_consistency_images_payload",
+        lambda asset_dir, image_design: [{"local_path": "dummy.png"}],
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_validate_image_design",
+        lambda case, asset_dir, image_design, timings: {
+            "is_passed": True,
+            "summary": "ok",
+            "issues": [],
+        },
+    )
     monkeypatch.setattr(
         pipeline,
         "_audit_image_consistency",
-        lambda config, asset_dir, image_design: {"is_passed": False, "summary": "bad", "issues": [{"issue_id": "1"}]},
+        lambda config, asset_dir, image_design, timings: {
+            "is_passed": False,
+            "summary": "bad",
+            "issues": [{"issue_id": "1"}],
+        },
     )
     monkeypatch.setattr(
         pipeline,
         "_compare_illustrations",
-        lambda config, case, asset_dir, image_design: [{"result": {"overall_passed": True}}],
+        lambda config, case, asset_dir, image_design, timings: [
+            {"result": {"overall_passed": True}}
+        ],
     )
     monkeypatch.setattr(
         pipeline,
         "validate_final_image_layout",
-        lambda config, case, asset_dir, image_design: {"status": "success", "is_passed": True, "summary": "ok", "issues": []},
+        lambda config, case, asset_dir, image_design, timings: {
+            "status": "success",
+            "is_passed": True,
+            "summary": "ok",
+            "issues": [],
+        },
     )
     monkeypatch.setattr(
         pipeline,
         "_compare_final_image",
-        lambda config, case, asset_dir, image_design: {"result": {"overall_passed": True}},
+        lambda config, case, asset_dir, image_design, timings: {
+            "result": {"overall_passed": True}
+        },
     )
 
     class DummyConfig:
         pass
 
-    report = pipeline._build_success_report(DummyConfig(), case, "session-1")
+    report = pipeline._build_success_report(
+        DummyConfig(), case, "session-1", pipeline.TimingCollector()
+    )
 
-    validation_file = tmp_path / "tmp" / case.case_id / "image_consistency_validation.json"
+    validation_file = (
+        tmp_path / "tmp" / case.case_id / "image_consistency_validation.json"
+    )
     assert validation_file.exists()
     assert '"is_passed": false' in validation_file.read_text(encoding="utf-8")
     assert "image_design_validation" not in report
     assert "image_consistency_validation" not in report
 
 
-def test_build_success_report_writes_final_image_layout_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_build_success_report_writes_final_image_layout_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """验证最终长图结构审核结果单独落盘。"""
     from story_med.models.case_model import StoryCaseConfig
-    from story_med.services.story_generation_evaluation import image_audit_pipeline as pipeline
+    from story_med.services.story_generation_evaluation import (
+        image_audit_pipeline as pipeline,
+    )
 
     case = StoryCaseConfig(
         case_id="SM_TEST",
@@ -183,44 +270,81 @@ def test_build_success_report_writes_final_image_layout_file(monkeypatch: pytest
 
     monkeypatch.setattr(pipeline, "RESULTS_DIR", tmp_path / "assets_root")
     monkeypatch.setattr(pipeline, "STORY_AUDITS_DIR", tmp_path / "tmp")
-    monkeypatch.setattr(pipeline, "_read_image_design", lambda _: {"illustrations": [{"id": 1, "image_path": "a.png"}]})
-    monkeypatch.setattr(pipeline, "_build_consistency_images_payload", lambda asset_dir, image_design: [{"local_path": "dummy.png"}])
-    monkeypatch.setattr(pipeline, "_validate_image_design", lambda case, asset_dir, image_design: {"is_passed": True, "summary": "ok", "issues": []})
+    monkeypatch.setattr(
+        pipeline,
+        "_read_image_design",
+        lambda _: {"illustrations": [{"id": 1, "image_path": "a.png"}]},
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_build_consistency_images_payload",
+        lambda asset_dir, image_design: [{"local_path": "dummy.png"}],
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_validate_image_design",
+        lambda case, asset_dir, image_design, timings: {
+            "is_passed": True,
+            "summary": "ok",
+            "issues": [],
+        },
+    )
     monkeypatch.setattr(
         pipeline,
         "_audit_image_consistency",
-        lambda config, asset_dir, image_design: {"is_passed": True, "summary": "ok", "issues": []},
+        lambda config, asset_dir, image_design, timings: {
+            "is_passed": True,
+            "summary": "ok",
+            "issues": [],
+        },
     )
     monkeypatch.setattr(
         pipeline,
         "validate_final_image_layout",
-        lambda config, case, asset_dir, image_design: {"status": "success", "is_passed": False, "summary": "bad layout", "issues": [{"issue_id": "1"}]},
+        lambda config, case, asset_dir, image_design, timings: {
+            "status": "success",
+            "is_passed": False,
+            "summary": "bad layout",
+            "issues": [{"issue_id": "1"}],
+        },
     )
     monkeypatch.setattr(
         pipeline,
         "_compare_illustrations",
-        lambda config, case, asset_dir, image_design: [{"result": {"overall_passed": True}}],
+        lambda config, case, asset_dir, image_design, timings: [
+            {"result": {"overall_passed": True}}
+        ],
     )
     monkeypatch.setattr(
         pipeline,
         "_compare_final_image",
-        lambda config, case, asset_dir, image_design: {"result": {"overall_passed": True}},
+        lambda config, case, asset_dir, image_design, timings: {
+            "result": {"overall_passed": True}
+        },
     )
 
     class DummyConfig:
         pass
 
-    pipeline._build_success_report(DummyConfig(), case, "session-1")
+    pipeline._build_success_report(
+        DummyConfig(), case, "session-1", pipeline.TimingCollector()
+    )
 
-    validation_file = tmp_path / "tmp" / case.case_id / "final_image_layout_validation.json"
+    validation_file = (
+        tmp_path / "tmp" / case.case_id / "final_image_layout_validation.json"
+    )
     assert validation_file.exists()
     assert '"is_passed": false' in validation_file.read_text(encoding="utf-8")
 
 
-def test_validate_final_image_layout_uses_original_image(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_validate_final_image_layout_uses_original_image(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """验证最终长图审核走原图直传，不走缩略图。"""
     from story_med.models.case_model import StoryCaseConfig
-    from story_med.services.story_generation_evaluation import final_image_layout_audit_service as pipeline
+    from story_med.services.story_generation_evaluation import (
+        final_image_layout_audit_service as pipeline,
+    )
 
     case = StoryCaseConfig(
         case_id="SM_TEST",
@@ -244,7 +368,11 @@ def test_validate_final_image_layout_uses_original_image(monkeypatch: pytest.Mon
         "story_med.services.clinical_case_preparation.clinical_extract_baseline_service.BASELINES_DIR",
         tmp_path / "baselines",
     )
-    monkeypatch.setattr(pipeline, "_find_single_image", lambda _: asset_dir / "generate_final_image" / "final.png")
+    monkeypatch.setattr(
+        pipeline,
+        "_find_single_image",
+        lambda _: asset_dir / "generate_final_image" / "final.png",
+    )
     monkeypatch.setattr(
         pipeline,
         "call_multimodal_json",
@@ -257,16 +385,22 @@ def test_validate_final_image_layout_uses_original_image(monkeypatch: pytest.Mon
     class DummyConfig:
         pass
 
-    result = pipeline.validate_final_image_layout(DummyConfig(), case, asset_dir, {"illustrations": []})
+    result = pipeline.validate_final_image_layout(
+        DummyConfig(), case, asset_dir, {"illustrations": []}
+    )
 
     assert captured["use_thumbnail"] is False
     assert result["status"] == "success"
 
 
-def test_build_image_prompt_only_uses_patient_case_and_images(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_build_image_prompt_only_uses_patient_case_and_images(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """验证单张图片事实审核不再注入图片设计细节。"""
     from story_med.models.case_model import StoryCaseConfig
-    from story_med.services.story_generation_evaluation import image_audit_pipeline as pipeline
+    from story_med.services.story_generation_evaluation import (
+        image_audit_pipeline as pipeline,
+    )
 
     case = StoryCaseConfig(
         case_id="SM_TEST",
@@ -299,10 +433,67 @@ def test_build_image_prompt_only_uses_patient_case_and_images(monkeypatch: pytes
     assert '"composition": "短发背影"' not in prompt
 
 
-def test_compare_final_image_only_uses_patient_case_and_images(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_compare_illustrations_persists_failed_node_and_continues(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """验证单张图片失败时会独立落盘并继续处理其他图片。"""
+    from story_med.models.case_model import StoryCaseConfig
+    from story_med.services.story_generation_evaluation import (
+        image_audit_pipeline as pipeline,
+    )
+
+    case = StoryCaseConfig(
+        case_id="SM_TEST",
+        description="test",
+        creative_brief="brief",
+        case_facts="facts",
+        image_dir="case-images",
+        hard_rules={},
+    )
+    monkeypatch.setattr(pipeline, "_patient_case_baseline", lambda case: "baseline")
+    monkeypatch.setattr(pipeline, "STORY_AUDITS_DIR", tmp_path / "audits")
+    monkeypatch.setattr(pipeline, "_find_generated_image", lambda *_: tmp_path / "1.png")
+
+    def fake_call(config: object, prompt: str, image_paths: list[Path]) -> dict:
+        if '"image_id": 2' in prompt:
+            raise RuntimeError("模型返回异常")
+        return {"overall_passed": True}
+
+    monkeypatch.setattr(pipeline, "call_multimodal_json", fake_call)
+    results = pipeline._compare_illustrations(
+        object(),
+        case,
+        tmp_path / "assets",
+        {
+            "illustrations": [
+                {"id": 1, "image_path": "1.png"},
+                {"id": 2, "image_path": "2.png"},
+            ]
+        },
+        pipeline.TimingCollector(),
+    )
+
+    first = json.loads(
+        (tmp_path / "audits" / "SM_TEST" / "image_fact_audit_1.json").read_text()
+    )
+    second = json.loads(
+        (tmp_path / "audits" / "SM_TEST" / "image_fact_audit_2.json").read_text()
+    )
+    assert first["status"] == "success"
+    assert second["status"] == "failed"
+    assert second["error"] == "模型返回异常"
+    assert len(results) == 2
+    assert results[1]["result"]["overall_passed"] is False
+
+
+def test_compare_final_image_only_uses_patient_case_and_images(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """验证最终长图事实审核不再注入 image_design。"""
     from story_med.models.case_model import StoryCaseConfig
-    from story_med.services.story_generation_evaluation import image_audit_pipeline as pipeline
+    from story_med.services.story_generation_evaluation import (
+        image_audit_pipeline as pipeline,
+    )
 
     case = StoryCaseConfig(
         case_id="SM_TEST",
@@ -336,7 +527,13 @@ def test_compare_final_image_only_uses_patient_case_and_images(monkeypatch: pyte
     class DummyConfig:
         pass
 
-    result = pipeline._compare_final_image(DummyConfig(), case, asset_dir, {"illustrations": [{"composition": "短发"}]})
+    result = pipeline._compare_final_image(
+        DummyConfig(),
+        case,
+        asset_dir,
+        {"illustrations": [{"composition": "短发"}]},
+        pipeline.TimingCollector(),
+    )
 
     assert result["result"]["overall_passed"] is True
     assert '"patient_case": "clinical baseline"' in str(captured["prompt"])
@@ -345,11 +542,17 @@ def test_compare_final_image_only_uses_patient_case_and_images(monkeypatch: pyte
     assert '"image_design"' not in str(captured["prompt"])
 
 
-def test_build_image_prompt_prefers_clinical_extract(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_build_image_prompt_prefers_clinical_extract(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """验证图片事实审核优先使用 clinical_extract.md 作为病例基准。"""
     from story_med.models.case_model import StoryCaseConfig
-    from story_med.services.clinical_case_preparation import clinical_extract_baseline_service as clinical_baseline
-    from story_med.services.story_generation_evaluation import image_audit_pipeline as pipeline
+    from story_med.services.clinical_case_preparation import (
+        clinical_extract_baseline_service as clinical_baseline,
+    )
+    from story_med.services.story_generation_evaluation import (
+        image_audit_pipeline as pipeline,
+    )
 
     baseline_file = tmp_path / "baselines" / "case-images" / "clinical_extract.md"
     baseline_file.parent.mkdir(parents=True)

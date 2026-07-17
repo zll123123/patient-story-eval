@@ -55,9 +55,6 @@ class StoryStepResult:
     response_body: Dict[str, Any]
     response_data: Dict[str, Any]
     session_id: str = ""
-    started_at: str = ""
-    finished_at: str = ""
-    duration_seconds: float = 0.0
     downloaded_assets: List[Dict[str, Any]] | None = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -70,9 +67,6 @@ class StoryStepResult:
             "response_body": self.response_body,
             "response_data": self.response_data,
             "session_id": self.session_id,
-            "started_at": self.started_at,
-            "finished_at": self.finished_at,
-            "duration_seconds": self.duration_seconds,
             "downloaded_assets": self.downloaded_assets or [],
         }
 
@@ -87,9 +81,6 @@ class StoryStepResult:
             response_body=dict(data.get("response_body") or {}),
             response_data=dict(data.get("response_data") or {}),
             session_id=str(data.get("session_id") or ""),
-            started_at=str(data.get("started_at") or ""),
-            finished_at=str(data.get("finished_at") or ""),
-            duration_seconds=float(data.get("duration_seconds") or 0.0),
             downloaded_assets=list(data.get("downloaded_assets") or []),
         )
 
@@ -109,9 +100,8 @@ class StoryAgentRunResult:
     images_response: Dict[str, Any]
     final_image_response: Dict[str, Any]
     downloaded_assets: List[Dict[str, Any]]
-    started_at: str = ""
-    finished_at: str = ""
-    total_duration_seconds: float = 0.0
+    task_id: str = ""
+    execution_stages: List[Dict[str, Any]] = field(default_factory=list)
     error: str = ""
     failed_step: str = ""
 
@@ -121,6 +111,7 @@ class StoryAgentRunResult:
             "case_id": self.case_id,
             "description": self.description,
             "session_id": self.session_id,
+            "task_id": self.task_id,
             "success": self.success,
             "steps": [item.to_dict() for item in self.steps],
             "session_response": self.session_response,
@@ -129,9 +120,7 @@ class StoryAgentRunResult:
             "images_response": self.images_response,
             "final_image_response": self.final_image_response,
             "downloaded_assets": self.downloaded_assets,
-            "started_at": self.started_at,
-            "finished_at": self.finished_at,
-            "total_duration_seconds": self.total_duration_seconds,
+            "execution_stages": self.execution_stages,
             "error": self.error,
             "failed_step": self.failed_step,
         }
@@ -143,6 +132,7 @@ class StoryAgentRunResult:
             case_id=str(data.get("case_id") or ""),
             description=str(data.get("description") or ""),
             session_id=str(data.get("session_id") or ""),
+            task_id=str(data.get("task_id") or ""),
             success=bool(data.get("success", False)),
             steps=[StoryStepResult.from_dict(item) for item in data.get("steps") or []],
             session_response=dict(data.get("session_response") or {}),
@@ -151,9 +141,7 @@ class StoryAgentRunResult:
             images_response=dict(data.get("images_response") or {}),
             final_image_response=dict(data.get("final_image_response") or {}),
             downloaded_assets=list(data.get("downloaded_assets") or []),
-            started_at=str(data.get("started_at") or ""),
-            finished_at=str(data.get("finished_at") or ""),
-            total_duration_seconds=float(data.get("total_duration_seconds") or 0.0),
+            execution_stages=list(data.get("execution_stages") or []),
             error=str(data.get("error") or ""),
             failed_step=str(data.get("failed_step") or ""),
         )
