@@ -94,6 +94,30 @@ def test_run_edit_dialogue_analysis_captures_recheck_exception(
     assert captured["analysis"]["error"] == "LLM analysis timeout"
 
 
+def test_run_edit_dialogue_analysis_ignores_execution_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证执行失败但未发生审核失败时不进入分析。"""
+    dialogue_result = {
+        "case_id": "EDG_EXECUTION_FAILED",
+        "overall_passed": False,
+        "turn_results": [
+            {
+                "turn_id": 1,
+                "execution_status": "failed",
+                "audit_status": "not_run",
+            }
+        ],
+    }
+    monkeypatch.setattr(
+        pipeline,
+        "_write_analysis",
+        lambda *_args, **_kwargs: pytest.fail("执行失败不应写入分析结果"),
+    )
+
+    assert pipeline.run_edit_dialogue_analysis(FakeLlmConfig(), dialogue_result) is None
+
+
 def _dialogue_result() -> dict[str, Any]:
     """构建多轮编辑失败结果。"""
     return {

@@ -22,8 +22,8 @@ def test_evaluate_edit_coverage_uses_final_html_only(
     """验证编辑审核只基于最终长图 HTML。"""
     monkeypatch.setattr(service, "ASSETS_DIR", tmp_path / "assets")
     monkeypatch.setattr(service, "EDIT_COVERAGE_PROMPT_FILE", _write_prompt(tmp_path))
-    _write_text(tmp_path / "assets/SM_001/session-1/generate_final_image/index.html", "old html")
-    html_path = tmp_path / "assets/EC_001/session-1/adjustment/index.html"
+    _write_text(tmp_path / "assets/SM_001/session-1/generate_final_image/index_old.html", "old html")
+    html_path = tmp_path / "assets/EC_001/session-1/adjustment/index_new.html"
     _write_text(html_path, "new html with company")
     adjustment_result = {"downloaded_assets": [{"type": "html", "local_path": str(html_path)}]}
     calls: list[str] = []
@@ -84,14 +84,29 @@ def test_resolve_reference_artifact_session_id_uses_latest_original_case_session
     monkeypatch.setattr(service, "ASSETS_DIR", tmp_path / "assets")
     old_dir = tmp_path / "assets/SM_001/old-session"
     latest_dir = tmp_path / "assets/SM_001/latest-session"
-    _write_text(old_dir / "generate_story/story.md", "old story")
-    _write_text(old_dir / "generate_final_image/index.html", "old html")
-    _write_text(latest_dir / "generate_story/story.md", "latest story")
-    _write_text(latest_dir / "generate_final_image/index.html", "latest html")
+    _write_text(old_dir / "generate_story/story_old.md", "old story")
+    _write_text(old_dir / "generate_final_image/index_old.html", "old html")
+    _write_text(latest_dir / "generate_story/story_latest.md", "latest story")
+    _write_text(latest_dir / "generate_final_image/index_latest.html", "latest html")
     os.utime(old_dir, (100, 100))
     os.utime(latest_dir, (200, 200))
 
     assert service.resolve_reference_artifact_session_id("SM_001", "edit-session") == "latest-session"
+
+
+def test_reference_content_reads_hashed_generation_artifacts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """验证编辑前置能读取生成链路的 hash 文件名产物。"""
+    monkeypatch.setattr(service, "ASSETS_DIR", tmp_path / "assets")
+    story_dir = tmp_path / "assets/SM_001/session-1/generate_story"
+    html_dir = tmp_path / "assets/SM_001/session-1/generate_final_image"
+    _write_text(story_dir / "story_abc123.md", "story")
+    _write_text(html_dir / "index_def456.html", "html")
+
+    assert service._infer_latest_complete_session_id("SM_001") == "session-1"
+    assert service.read_reference_content("SM_001", "session-1") == "html"
 
 
 def test_resolve_reference_context_uses_saved_content_hub_task_id(
@@ -101,8 +116,8 @@ def test_resolve_reference_context_uses_saved_content_hub_task_id(
     """验证编辑上下文优先复用运行结果中保存的 task_id。"""
     monkeypatch.setattr(service, "ASSETS_DIR", tmp_path / "assets")
     monkeypatch.setattr(service, "GENERATION_RUNS_DIR", tmp_path / "results" / "generation_runs")
-    _write_text(tmp_path / "assets/SM_001/session-1/generate_story/story.md", "story")
-    _write_text(tmp_path / "assets/SM_001/session-1/generate_final_image/index.html", "html")
+    _write_text(tmp_path / "assets/SM_001/session-1/generate_story/story_abc123.md", "story")
+    _write_text(tmp_path / "assets/SM_001/session-1/generate_final_image/index_def456.html", "html")
     _write_text(
         tmp_path / "results/generation_runs/SM_001/session-1.json",
         '{"session_response":{"content_hub_task":{"task_id":"task-1"}}}',

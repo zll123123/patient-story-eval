@@ -71,12 +71,13 @@ def resolve_reference_artifact_session_id(
 
 def read_reference_content(ref_case_id: str, session_id: str) -> str:
     """读取修改前基线内容。"""
-    candidates = [
-        ASSETS_DIR / ref_case_id / session_id / "adjustment" / "index.html",
-        ASSETS_DIR / ref_case_id / session_id / "generate_final_image" / "index.html",
-        ASSETS_DIR / ref_case_id / session_id / "generate_story" / "story.md",
+    session_dir = ASSETS_DIR / ref_case_id / session_id
+    generated_candidates = [
+        *sorted((session_dir / "adjustment").glob("index_*.html")),
+        *sorted((session_dir / "generate_final_image").glob("index_*.html")),
+        *sorted((session_dir / "generate_story").glob("story_*.md")),
     ]
-    return _read_first_existing(candidates)
+    return _read_first_existing(generated_candidates)
 
 
 def read_adjusted_content(
@@ -91,8 +92,10 @@ def read_adjusted_content(
         local_path = Path(str(asset.get("local_path") or ""))
         if local_path.suffix.lower() in {".md", ".json"} and local_path.exists():
             return local_path.read_text(encoding="utf-8")
-    fallback = ASSETS_DIR / edit_case_id / session_id / "adjustment" / "index.html"
-    return _read_first_existing([fallback], required=False)
+    candidates = sorted(
+        (ASSETS_DIR / edit_case_id / session_id / "adjustment").glob("index_*.html")
+    )
+    return _read_first_existing(candidates, required=False)
 
 
 def evaluate_edit_coverage(
@@ -208,8 +211,10 @@ def _read_adjusted_long_image_content(
         local_path = Path(str(asset.get("local_path") or ""))
         if local_path.suffix.lower() == ".html" and local_path.exists():
             return local_path.read_text(encoding="utf-8")
-    fallback = ASSETS_DIR / edit_case_id / session_id / "adjustment" / "index.html"
-    return _read_first_existing([fallback], required=False)
+    candidates = sorted(
+        (ASSETS_DIR / edit_case_id / session_id / "adjustment").glob("index_*.html")
+    )
+    return _read_first_existing(candidates, required=False)
 
 
 def _missing_html_validation() -> Dict[str, Any]:
@@ -302,11 +307,9 @@ def _is_complete_reference_session(ref_case_id: str, session_id: str) -> bool:
     if not ref_case_id or not session_id:
         return False
     base_dir = ASSETS_DIR / ref_case_id / session_id
-    required_files = [
-        base_dir / "generate_story" / "story.md",
-        base_dir / "generate_final_image" / "index.html",
-    ]
-    return all(path.exists() for path in required_files)
+    story_files = list((base_dir / "generate_story").glob("story_*.md"))
+    html_files = list((base_dir / "generate_final_image").glob("index_*.html"))
+    return bool(story_files and html_files)
 
 
 def _read_first_existing(candidates: list[Path], required: bool = True) -> str:

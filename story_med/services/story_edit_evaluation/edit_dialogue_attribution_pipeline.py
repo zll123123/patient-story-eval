@@ -79,12 +79,11 @@ def _handle_analysis_failure(
 
 
 def _latest_failed_turn(turn_results: List[Dict[str, Any]]) -> Dict[str, Any] | None:
-    """读取真正执行失败或最终审核失败的轮次。"""
+    """读取最终审核失败的轮次。"""
     failed = [
         item
         for item in turn_results
-        if item.get("execution_status") == "failed"
-        or item.get("audit_status") == "failed"
+        if item.get("audit_status") == "failed"
     ]
     if not failed:
         return None

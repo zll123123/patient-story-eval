@@ -410,6 +410,21 @@ def _build_preflight_failed_dialogue_result(dialogue_case: Dict[str, Any], error
     }
 
 
+def write_dialogue_failure_result(case_id: str, error_type: str, error: str) -> Dict[str, Any]:
+    """记录单个编辑 case 的编排失败结果。"""
+    result = {
+        "case_id": case_id,
+        "evaluation_mode": "final_only",
+        "overall_passed": False,
+        "execution_status": "failed",
+        "error_type": error_type,
+        "error": error,
+        "turn_results": [],
+    }
+    _write_dialogue_result(case_id, result)
+    return result
+
+
 def _build_audit_failed_result(
     dialogue_case: Dict[str, Any], error_type: str, error: str
 ) -> Dict[str, Any]:

@@ -7,6 +7,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 if str(ROOT_DIR) not in sys.path:
@@ -14,7 +15,10 @@ if str(ROOT_DIR) not in sys.path:
 
 from story_med.config.app_config import load_app_config
 from story_med.config.app_config import load_llm_config
-from story_med.services.story_edit_evaluation.edit_dialogue_pipeline import run_edit_dialogue_case
+from story_med.services.story_edit_evaluation.edit_dialogue_pipeline import (
+    run_edit_dialogue_case,
+    write_dialogue_failure_result,
+)
 from story_med.services.clinical_case_preparation.yaml_case_service import load_edit_dialogue_cases
 from story_med.utils.artifact_cleaner import clear_edit_dialogue_cases_artifacts
 
@@ -42,9 +46,21 @@ def main(argv: list[str] | None = None) -> int:
     clear_edit_dialogue_cases_artifacts(case_ids)
     app_config = load_app_config()
     llm_config = load_llm_config()
-    results = [run_edit_dialogue_case(app_config, llm_config, case_id) for case_id in case_ids]
+    results = [
+        _run_one_case(app_config, llm_config, case_id) for case_id in case_ids
+    ]
     sys.stdout.write(json.dumps(_compact_results(results), ensure_ascii=False, indent=2) + "\n")
     return 0 if results and all(result.get("overall_passed") is True for result in results) else 1
+
+
+def _run_one_case(
+    app_config: Any, llm_config: Any, case_id: str
+) -> dict[str, Any]:
+    """执行单个编辑 case，异常时记录并继续批量执行。"""
+    try:
+        return run_edit_dialogue_case(app_config, llm_config, case_id)
+    except Exception as exc:
+        return write_dialogue_failure_result(case_id, "execution_orchestration_failed", str(exc))
 
 
 def _resolve_case_ids(case_id: str, case_ids: str) -> list[str]:

@@ -165,7 +165,14 @@ class PatientStoryEditExecutor:
                 )
             else:
                 normalized_history = normalize_content_hub_stream(stream_path)
-            success = has_task_completed and not stream_errors
+            html_artifacts = normalized_history.get("artifacts", {}).get("html", [])
+            has_html_artifact = any(
+                str(item.get("type") or "").lower() == "html"
+                or str(item.get("oss_key") or "").lower().endswith(".html")
+                for item in html_artifacts
+                if isinstance(item, dict)
+            )
+            success = has_task_completed and not stream_errors and has_html_artifact
             downloaded_assets = (
                 self._download_adjustment_assets(
                     case_id, session_id, normalized_history, timings, task_id

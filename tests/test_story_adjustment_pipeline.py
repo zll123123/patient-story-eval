@@ -26,7 +26,9 @@ class FakeResponse:
     def iter_content(self, chunk_size: int, decode_unicode: bool) -> list[str]:
         """返回模拟 SSE 分块。"""
         return [
+            'data: {"message_type":"USER_REQUEST","turn_id":"turn-1"}\n\n',
             "data: {\"message_type\":\"TASK_RUNNING\"}\n\n",
+            'data: {"payload":{"raw":{"data":{"files":[{"type":"html","oss_key":"story-med/adjustment/index_test.html"}]}}}}\n\n',
             "data: {\"message_type\":\"TASK_COMPLETED\"}\n\n",
         ]
 
@@ -124,6 +126,20 @@ def test_run_story_adjustment_writes_stream_and_summary(
 ) -> None:
     """验证调整节点会保存 SSE 原始流和摘要结果。"""
     monkeypatch.setattr(pipeline, "EDIT_RUNS_DIR", tmp_path / "edit")
+    monkeypatch.setattr(
+        "story_med.executors.patient_story_edit_executor.create_story_med_download_url",
+        lambda *_args, **_kwargs: {"download_url": "https://download.example"},
+    )
+
+    def fake_download(_url: str, output_path: Path, _config: Any) -> dict[str, Any]:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("<html></html>", encoding="utf-8")
+        return {"local_path": str(output_path)}
+
+    monkeypatch.setattr(
+        "story_med.executors.patient_story_edit_executor.download_story_med_file",
+        fake_download,
+    )
     fake_session = FakeSession()
 
     result = pipeline.run_story_adjustment(
@@ -137,7 +153,7 @@ def test_run_story_adjustment_writes_stream_and_summary(
 
     assert result["success"] is True
     assert result["has_task_completed"] is True
-    assert result["response_body"]["event_count"] == 2
+    assert result["response_body"]["event_count"] == 4
     assert fake_session.request["url"] == "https://adjust.example.com/api/agent/tasks/stream"
     assert fake_session.request["json"]["form"]["message"] == "图片风格调整的更写实一点"
     assert (tmp_path / "edit/SM_001/session-1_adjustment_stream.txt").exists()
