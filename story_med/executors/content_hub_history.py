@@ -55,41 +55,35 @@ def is_generation_history_complete(history: Dict[str, Any]) -> bool:
 
 
 def is_adjustment_history_complete(
-    history: Dict[str, Any], expected_message: str
+    history: Dict[str, Any], expected_turn_id: str
 ) -> bool:
     """判断当前编辑 turn 是否完成并产出最终长图。
 
     Args:
         history: 标准化后的 history。
-        expected_message: 当前编辑 turn 的用户修改要求。
+        expected_turn_id: 内容中台返回的当前编辑 turn_id。
 
     Returns:
         只有当前 turn 为 COMPLETED 且该 turn 自己包含 HTML 文件时才返回 True。
     """
-    turn = _latest_turn_by_message(history, expected_message)
+    turn = _turn_by_id(history.get("raw_history"), expected_turn_id)
     if not turn or str(turn.get("status") or "").upper() != "COMPLETED":
         return False
     return _turn_contains_html(turn)
 
 
-def _latest_turn_by_message(
-    history: Dict[str, Any], expected_message: str
-) -> Dict[str, Any]:
-    """从 history 中找到当前修改消息对应的最新 turn。"""
-    raw_history = history.get("raw_history")
+def _turn_by_id(raw_history: Any, expected_turn_id: str) -> Dict[str, Any]:
+    """从原始 history 中按远程 turn_id 精确定位 turn。"""
     data = raw_history.get("data") if isinstance(raw_history, dict) else {}
     turns = data.get("turns") if isinstance(data, dict) else []
     if not isinstance(turns, list):
         return {}
-    matches: List[Dict[str, Any]] = []
     for turn in turns:
         if not isinstance(turn, dict):
             continue
-        payload = turn.get("payload")
-        message = payload.get("message") if isinstance(payload, dict) else ""
-        if str(message or "") == expected_message:
-            matches.append(turn)
-    return matches[-1] if matches else {}
+        if str(turn.get("turn_id") or "") == str(expected_turn_id):
+            return turn
+    return {}
 
 
 def _turn_contains_html(turn: Dict[str, Any]) -> bool:
@@ -108,11 +102,13 @@ def _turn_contains_html(turn: Dict[str, Any]) -> bool:
     return False
 
 
-def normalize_content_hub_history(body: Dict[str, Any]) -> Dict[str, Any]:
+def normalize_content_hub_history(
+    body: Dict[str, Any], expected_turn_id: str = ""
+) -> Dict[str, Any]:
     """将内容中台 history 转成评测链路使用的统一结构。"""
     messages: List[Dict[str, str]] = []
     artifacts: Dict[str, List[Dict[str, Any]]] = {}
-    for frame in content_hub_frames(body):
+    for frame in content_hub_frames(body, expected_turn_id):
         raw = frame_raw(frame)
         data = raw.get("data") if isinstance(raw.get("data"), dict) else {}
         content = str(data.get("content") or "").strip() if isinstance(data, dict) else ""
@@ -158,6 +154,27 @@ def normalize_content_hub_stream(stream_path: Path) -> Dict[str, Any]:
     }
 
 
+def extract_stream_turn_id(stream_path: Path) -> str:
+    """读取 SSE USER_REQUEST 中的内容中台远程 turn_id。"""
+    if not stream_path.exists():
+        return ""
+    for line in stream_path.read_text(encoding="utf-8").splitlines():
+        if not line.startswith("data:"):
+            continue
+        event = _parse_stream_event(line[5:].strip())
+        if str(event.get("message_type") or "").upper() != "USER_REQUEST":
+            continue
+        turn_id = event.get("turn_id") or event.get("turnId")
+        if turn_id:
+            return str(turn_id)
+        payload = event.get("payload")
+        if isinstance(payload, dict):
+            turn_id = payload.get("turn_id") or payload.get("turnId")
+            if turn_id:
+                return str(turn_id)
+    return ""
+
+
 def _parse_stream_event(text: str) -> Dict[str, Any]:
     """解析单条 SSE JSON 数据。"""
     try:
@@ -176,9 +193,15 @@ def _stream_raw_payload(event: Dict[str, Any]) -> Dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
-def detect_content_hub_upstream_error(body: Dict[str, Any]) -> Dict[str, str]:
+def detect_content_hub_upstream_error(
+    body: Dict[str, Any], expected_turn_id: str = ""
+) -> Dict[str, str]:
     """识别内容中台外层完成但上游 Agent 内层失败的情况。"""
-    for frame in content_hub_frames(body):
+    frames = content_hub_frames(body)
+    if expected_turn_id:
+        turn = _turn_by_id(body, expected_turn_id)
+        frames = [frame for frame in turn.get("frames") or [] if isinstance(frame, dict)]
+    for frame in frames:
         message_type = str(frame.get("message_type") or "")
         payload = frame.get("payload") if isinstance(frame.get("payload"), dict) else {}
         raw = frame_raw(frame)
@@ -186,7 +209,7 @@ def detect_content_hub_upstream_error(body: Dict[str, Any]) -> Dict[str, str]:
         if message_type == "TASK_FAILED" or str(raw.get("status") or "") == "ERROR" or "graph stream error" in raw_text:
             return {
                 "message": _upstream_error_message(frame, raw_text),
-                "failed_step": _content_hub_failed_step(body),
+                "failed_step": _content_hub_failed_step(body, expected_turn_id),
             }
     return {}
 
@@ -210,13 +233,17 @@ def content_hub_task_from_create_response(body: Dict[str, Any]) -> Dict[str, Any
     }
 
 
-def content_hub_frames(body: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """展开内容中台 history 中的 frames。"""
+def content_hub_frames(
+    body: Dict[str, Any], expected_turn_id: str = ""
+) -> List[Dict[str, Any]]:
+    """展开内容中台 history 中的 frames，可按 turn_id 限定范围。"""
     data = body.get("data") if isinstance(body.get("data"), dict) else {}
     turns = data.get("turns") if isinstance(data.get("turns"), list) else []
     frames: List[Dict[str, Any]] = []
     for turn in turns:
         if not isinstance(turn, dict):
+            continue
+        if expected_turn_id and str(turn.get("turn_id") or "") != str(expected_turn_id):
             continue
         for frame in turn.get("frames") or []:
             if isinstance(frame, dict):
@@ -276,11 +303,15 @@ def _content_hub_file_group(file_item: Dict[str, Any], file_key: str) -> str:
     return "html"
 
 
-def _content_hub_failed_step(body: Dict[str, Any]) -> str:
+def _content_hub_failed_step(body: Dict[str, Any], expected_turn_id: str = "") -> str:
     """根据已开始但未正常结束的节点推断失败步骤。"""
     step_titles: Dict[str, str] = {}
     latest_started = ""
-    for frame in content_hub_frames(body):
+    frames = content_hub_frames(body)
+    if expected_turn_id:
+        turn = _turn_by_id(body, expected_turn_id)
+        frames = [frame for frame in turn.get("frames") or [] if isinstance(frame, dict)]
+    for frame in frames:
         raw = frame_raw(frame)
         status = str(raw.get("status") or "")
         step_id = str(raw.get("step_id") or "")

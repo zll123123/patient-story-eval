@@ -15,6 +15,7 @@ from story_med.executors.patient_story_generation_executor import (
 from story_med.executors.content_hub_history import (
     content_hub_task_from_create_response,
     detect_content_hub_upstream_error,
+    extract_stream_turn_id,
     iter_artifacts,
     is_adjustment_history_complete,
     is_generation_history_complete,
@@ -116,6 +117,17 @@ def test_normalize_content_hub_stream_maps_files_to_history_structure(tmp_path: 
         "story-med/patient_case/session-1/index.html",
         "story-med/patient_case/session-1/index.png",
     ]
+
+
+def test_extract_stream_turn_id_reads_user_request_turn_id(tmp_path: Path) -> None:
+    """验证从 SSE USER_REQUEST 读取内容中台远程 turn_id。"""
+    stream_path = tmp_path / "stream.txt"
+    event = {"message_type": "USER_REQUEST", "turn_id": "remote-turn-2"}
+    stream_path.write_text(
+        f"data:{json.dumps(event, ensure_ascii=False)}\n", encoding="utf-8"
+    )
+
+    assert extract_stream_turn_id(stream_path) == "remote-turn-2"
 
 
 def test_detect_content_hub_upstream_error_when_raw_status_error() -> None:
@@ -302,7 +314,76 @@ def test_adjustment_history_ignores_previous_turn_html_when_current_turn_running
         "artifacts": {"html": [{"oss_key": "old/index.html"}]},
     }
 
-    assert is_adjustment_history_complete(history, "第二次修改") is False
+    history["raw_history"]["data"]["turns"][1]["turn_id"] = "remote-turn-2"
+
+    assert is_adjustment_history_complete(history, "remote-turn-2") is False
+
+
+def test_adjustment_history_uses_current_turn_status_and_artifacts() -> None:
+    """验证只有当前远程 turn 完成且自身有 HTML 才算完成。"""
+    history = {
+        "raw_history": {
+            "data": {
+                "turns": [
+                    {
+                        "turn_id": "remote-turn-1",
+                        "status": "COMPLETED",
+                        "frames": [_html_frame("old/index.html")],
+                    },
+                    {
+                        "turn_id": "remote-turn-2",
+                        "status": "COMPLETED",
+                        "frames": [_html_frame("current/index.html")],
+                    },
+                ]
+            }
+        }
+    }
+
+    assert is_adjustment_history_complete(history, "remote-turn-2") is True
+
+
+def test_history_error_ignores_previous_turn() -> None:
+    """验证旧 turn 的失败事件不会污染当前 turn。"""
+    body = {
+        "data": {
+            "turns": [
+                {
+                    "turn_id": "remote-turn-1",
+                    "status": "FAILED",
+                    "frames": [_agent_frame({"status": "ERROR", "data": {"error": "old"}})],
+                },
+                {
+                    "turn_id": "remote-turn-2",
+                    "status": "RUNNING",
+                    "frames": [],
+                },
+            ]
+        }
+    }
+
+    assert detect_content_hub_upstream_error(body, "remote-turn-2") == {}
+
+
+def test_history_error_detects_current_turn() -> None:
+    """验证当前 turn 的失败事件能被识别。"""
+    body = {
+        "data": {
+            "turns": [
+                {
+                    "turn_id": "remote-turn-2",
+                    "status": "FAILED",
+                    "frames": [
+                        _agent_frame(
+                            {"status": "ERROR", "data": {"error": "current"}}
+                        )
+                    ],
+                }
+            ]
+        }
+    }
+
+    assert detect_content_hub_upstream_error(body, "remote-turn-2")["message"]
 
 
 def _html_frame(oss_key: str) -> Dict[str, Any]:

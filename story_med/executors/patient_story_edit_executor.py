@@ -21,6 +21,7 @@ from story_med.config.app_config import StoryMedConfig
 from story_med.config.settings import ASSETS_DIR, EDIT_RUNS_DIR
 from story_med.executors.content_hub_history import (
     detect_content_hub_upstream_error,
+    extract_stream_turn_id,
     is_adjustment_history_complete,
     iter_artifacts,
     normalize_content_hub_history,
@@ -88,6 +89,7 @@ class PatientStoryEditExecutor:
             },
         )
         stream_warning = ""
+        remote_turn_id = ""
         try:
             with timings.stage(
                 "ensure_content_hub_auth",
@@ -118,6 +120,7 @@ class PatientStoryEditExecutor:
                     timer.update(
                         metadata={"event_count": stream_api.body.get("event_count", 0)}
                     )
+                remote_turn_id = extract_stream_turn_id(stream_path)
                 timings.add_agent_nodes(
                     list(
                         (stream_api.body.get("agent_node_timings") or {}).get("steps")
@@ -128,6 +131,7 @@ class PatientStoryEditExecutor:
                 )
             except Exception as exc:
                 stream_warning = str(exc)
+                remote_turn_id = extract_stream_turn_id(stream_path)
                 logger.warning(
                     "患者故事编辑 SSE 提前断开，转为 history 轮询: case_id={}, error={}",
                     case_id,
@@ -136,20 +140,28 @@ class PatientStoryEditExecutor:
             stream_errors = extract_stream_errors(stream_path)
             has_task_completed = detect_task_completed(stream_path)
             if self._should_poll_history(stream_warning, has_task_completed):
+                if not remote_turn_id:
+                    raise RuntimeError("remote_turn_id_missing: SSE 未返回当前编辑轮的 turn_id")
                 with timings.stage(
                     "history_polling",
                     "content_hub_request",
                     task_id=task_id,
                     session_id=session_id,
                 ):
-                    history_api = self._wait_for_terminal_history(task_id, message)
-                normalized_history = normalize_content_hub_history(history_api.body)
-                upstream_error = detect_content_hub_upstream_error(history_api.body)
+                    history_api = self._wait_for_terminal_history(task_id, remote_turn_id)
+                normalized_history = normalize_content_hub_history(
+                    history_api.body, remote_turn_id
+                )
+                upstream_error = detect_content_hub_upstream_error(
+                    history_api.body, remote_turn_id
+                )
                 if upstream_error:
                     raise RuntimeError(upstream_error["message"])
                 has_task_completed = (
                     has_task_completed
-                    or is_adjustment_history_complete(normalized_history, message)
+                    or is_adjustment_history_complete(
+                        normalized_history, remote_turn_id
+                    )
                 )
             else:
                 normalized_history = normalize_content_hub_stream(stream_path)
@@ -166,6 +178,7 @@ class PatientStoryEditExecutor:
                 "case_id": case_id,
                 "session_id": session_id,
                 "task_id": task_id,
+                "remote_turn_id": remote_turn_id,
                 "agent_type": agent_type,
                 "message": message,
                 "success": success,
@@ -189,6 +202,7 @@ class PatientStoryEditExecutor:
                 "case_id": case_id,
                 "session_id": session_id,
                 "task_id": task_id,
+                "remote_turn_id": remote_turn_id,
                 "agent_type": agent_type,
                 "message": message,
                 "success": False,
@@ -199,16 +213,18 @@ class PatientStoryEditExecutor:
         _write_json(summary_path, result)
         return result
 
-    def _wait_for_terminal_history(self, task_id: str, message: str):
+    def _wait_for_terminal_history(self, task_id: str, remote_turn_id: str):
         """轮询 history，直到编辑产物可用、失败或超时。"""
         return wait_for_terminal_history(
             self._session,
             self._config,
             task_id,
             is_complete=lambda body: is_adjustment_history_complete(
-                normalize_content_hub_history(body), message
+                normalize_content_hub_history(body, remote_turn_id), remote_turn_id
             ),
-            has_error=lambda body: bool(detect_content_hub_upstream_error(body)),
+            has_error=lambda body: bool(
+                detect_content_hub_upstream_error(body, remote_turn_id)
+            ),
         )
 
     def _should_poll_history(
