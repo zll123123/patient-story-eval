@@ -33,7 +33,6 @@ class StoryMedConfig:
     origin: str
     referer: str
     adjust_base_url: str
-    adjust_auth_token: str
     adjust_origin: str
     adjust_referer: str
     adjust_accept: str
@@ -119,10 +118,6 @@ def load_app_config(config_path: Path = DEFAULT_CONFIG_FILE) -> StoryMedConfig:
             "STORY_MED_ADJUST_BASE_URL",
             "",
         ).rstrip("/"),
-        adjust_auth_token=os.getenv(
-            "STORY_MED_ADJUST_AUTH_TOKEN",
-            os.getenv("authorization", ""),
-        ),
         adjust_origin=os.getenv(
             "STORY_MED_ADJUST_ORIGIN",
             "",

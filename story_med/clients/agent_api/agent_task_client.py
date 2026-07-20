@@ -25,7 +25,7 @@ STREAM_TASK_TIMEOUT_SECONDS = 1800
 
 
 def login_content_hub(session: Session, config: StoryMedConfig) -> Dict[str, Any]:
-    """登录内容中台并刷新当前运行配置中的访问令牌。
+    """使用用户名密码登录内容中台并建立登录态。
 
     Args:
         session: HTTP 会话。
@@ -47,11 +47,6 @@ def login_content_hub(session: Session, config: StoryMedConfig) -> Dict[str, Any
     )
     body = _json_body(response, AUTH_LOGIN_PATH)
     data = body.get("data") if isinstance(body.get("data"), dict) else {}
-    access_token = str(data.get("access_token") or "").strip()
-    token_type = str(data.get("token_type") or "Bearer").strip() or "Bearer"
-    if not access_token:
-        raise RuntimeError(f"内容中台登录响应缺少 access_token: {_mask_login_body(body)}")
-    config.adjust_auth_token = f"{token_type} {access_token}"
     return data
 
 
@@ -73,7 +68,7 @@ def create_story_med_upload_url(
     Returns:
         上传地址响应 data。
     """
-    response = _post_json_with_auth_retry(
+    response = _post_json_with_retry(
         session,
         config,
         STORY_MED_PRESIGN_UPLOAD_PATH,
@@ -133,7 +128,7 @@ def create_agent_task(
         创建任务响应。
     """
     payload = {"agent_type": agent_type or DEFAULT_AGENT_TYPE, "form": form}
-    response = _post_json_with_auth_retry(session, config, AGENT_TASKS_PATH, payload)
+    response = _post_json_with_retry(session, config, AGENT_TASKS_PATH, payload)
     body = _json_body(response, AGENT_TASKS_PATH)
     return StoryApiResponse(status_code=response.status_code, body=body, data=body)
 
@@ -156,7 +151,7 @@ def stream_agent_task(
         流式接口响应摘要。
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    response = _post_stream_with_auth_retry(
+    response = _post_stream_with_retry(
         session,
         config,
         AGENT_TASK_STREAM_PATH,
@@ -197,7 +192,7 @@ def get_agent_task_history(
     Returns:
         任务历史响应。
     """
-    response = _get_json_with_auth_retry(
+    response = _get_json_with_retry(
         session,
         config,
         AGENT_TASK_HISTORY_PATH,
@@ -220,7 +215,7 @@ def create_story_med_download_url(
     Returns:
         下载地址响应 data。
     """
-    response = _post_json_with_auth_retry(
+    response = _post_json_with_retry(
         session,
         config,
         STORY_MED_PRESIGN_DOWNLOAD_PATH,
@@ -326,9 +321,6 @@ def build_adjustment_headers(config: StoryMedConfig) -> Dict[str, str]:
         "Accept": config.adjust_accept,
         "Content-Type": "application/json;charset=UTF-8",
     }
-    auth_token = _normalize_auth_token(config.adjust_auth_token)
-    if auth_token:
-        headers["Authorization"] = auth_token
     if config.adjust_origin.strip():
         headers["Origin"] = config.adjust_origin.strip()
     if config.adjust_referer.strip():
@@ -354,7 +346,7 @@ def find_agent_task_by_remote_task_id(
     target_id = remote_agent_task_id.strip()
     if not target_id:
         return {}
-    response = _get_json_with_auth_retry(session, config, AGENT_TASKS_PATH, {})
+    response = _get_json_with_retry(session, config, AGENT_TASKS_PATH, {})
     if response.status_code >= 400:
         return {}
     body = _safe_json_body(response)
@@ -386,13 +378,13 @@ def _login_headers(config: StoryMedConfig) -> Dict[str, str]:
     return headers
 
 
-def _post_json_with_auth_retry(
+def _post_json_with_retry(
     session: Session,
     config: StoryMedConfig,
     path: str,
     payload: Dict[str, Any],
 ) -> Response:
-    """发送中台 JSON POST，并在 token 失效时登录重试一次。"""
+    """发送中台 JSON POST，未授权时重新登录并重试一次。"""
     response = session.post(
         f"{config.adjust_base_url}{path}",
         json=payload,
@@ -412,13 +404,13 @@ def _post_json_with_auth_retry(
     return response
 
 
-def _post_stream_with_auth_retry(
+def _post_stream_with_retry(
     session: Session,
     config: StoryMedConfig,
     path: str,
     payload: Dict[str, Any],
 ) -> Response:
-    """发送中台 SSE POST，并在 token 失效时登录重试一次。"""
+    """发送中台 SSE POST，未授权时重新登录并重试一次。"""
     response = session.post(
         f"{config.adjust_base_url}{path}",
         json=payload,
@@ -441,13 +433,13 @@ def _post_stream_with_auth_retry(
     return response
 
 
-def _get_json_with_auth_retry(
+def _get_json_with_retry(
     session: Session,
     config: StoryMedConfig,
     path: str,
     params: Dict[str, Any],
 ) -> Response:
-    """发送中台 JSON GET，并在 token 失效时登录重试一次。"""
+    """发送中台 JSON GET，未授权时重新登录并重试一次。"""
     response = session.get(
         f"{config.adjust_base_url}{path}",
         params=params,
@@ -473,18 +465,6 @@ def _is_unauthorized_response(response: Response) -> bool:
         return True
     body = _safe_json_body(response)
     return str(body.get("code") or "") in {"PCH-401-03", "PCH-401-01"}
-
-
-def _mask_login_body(body: Dict[str, Any]) -> Dict[str, Any]:
-    """屏蔽登录响应中的敏感字段。"""
-    masked = dict(body)
-    data = masked.get("data")
-    if isinstance(data, dict):
-        masked["data"] = {
-            key: "***MASKED***" if "token" in key.lower() else value
-            for key, value in data.items()
-        }
-    return masked
 
 
 def _safe_json_body(response: Response) -> Dict[str, Any]:
@@ -697,14 +677,6 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _normalize_auth_token(raw_token: str) -> str:
-    """标准化 Authorization 请求头值。"""
-    token = raw_token.strip()
-    if not token:
-        return ""
-    if token.lower().startswith("bearer "):
-        return token
-    return f"Bearer {token}"
 
 
 def _raise_for_stream_error(response: Response) -> None:

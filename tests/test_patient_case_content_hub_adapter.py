@@ -186,7 +186,6 @@ def test_upload_presign_body_uses_filename_key(tmp_path: Path, monkeypatch: Any)
         origin="",
         referer="",
         adjust_base_url="https://hub.example",
-        adjust_auth_token="token",
         adjust_origin="",
         adjust_referer="",
         adjust_accept="text/event-stream",
@@ -202,8 +201,8 @@ def test_upload_presign_body_uses_filename_key(tmp_path: Path, monkeypatch: Any)
     assert result["file_key"] == "key"
 
 
-def test_login_content_hub_updates_runtime_token(tmp_path: Path) -> None:
-    """验证中台登录会刷新运行期 Authorization token。"""
+def test_login_content_hub_uses_username_and_password(tmp_path: Path) -> None:
+    """验证中台登录使用用户名和密码建立登录态。"""
     from story_med.clients.agent_api.agent_task_client import login_content_hub
     from story_med.config.app_config import StoryMedConfig
 
@@ -217,7 +216,7 @@ def test_login_content_hub_updates_runtime_token(tmp_path: Path) -> None:
 
         def json(self) -> Dict[str, Any]:
             """返回 token 响应。"""
-            return {"success": True, "data": {"token_type": "Bearer", "access_token": "token-new"}}
+            return {"success": True, "data": {"logged_in": True}}
 
     class FakeSession:
         """模拟 HTTP 会话。"""
@@ -236,7 +235,6 @@ def test_login_content_hub_updates_runtime_token(tmp_path: Path) -> None:
         origin="",
         referer="",
         adjust_base_url="https://hub.example",
-        adjust_auth_token="expired",
         adjust_origin="",
         adjust_referer="",
         adjust_accept="text/event-stream",
@@ -250,7 +248,6 @@ def test_login_content_hub_updates_runtime_token(tmp_path: Path) -> None:
 
     assert captured["url"] == "https://hub.example/api/auth/login"
     assert captured["json"] == {"username": "admin", "password": "password"}
-    assert config.adjust_auth_token == "Bearer token-new"
 
 
 def test_case_generation_message_uses_creative_brief() -> None:
@@ -468,7 +465,6 @@ def _build_config(tmp_path: Path) -> StoryMedConfig:
         origin="",
         referer="",
         adjust_base_url="https://hub.example",
-        adjust_auth_token="token",
         adjust_origin="",
         adjust_referer="",
         adjust_accept="text/event-stream",
