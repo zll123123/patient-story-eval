@@ -7,6 +7,7 @@ from typing import Any, Dict
 
 import pytest
 import json
+from time import perf_counter
 
 from story_med.executors.patient_story_generation_executor import PatientStoryGenerationExecutor
 from story_med.executors.patient_story_generation_executor import (
@@ -186,6 +187,7 @@ def test_upload_presign_body_uses_filename_key(tmp_path: Path, monkeypatch: Any)
         origin="",
         referer="",
         adjust_base_url="https://hub.example",
+        adjust_auth_token="token",
         adjust_origin="",
         adjust_referer="",
         adjust_accept="text/event-stream",
@@ -202,7 +204,7 @@ def test_upload_presign_body_uses_filename_key(tmp_path: Path, monkeypatch: Any)
 
 
 def test_login_content_hub_uses_username_and_password(tmp_path: Path) -> None:
-    """验证中台登录使用用户名和密码建立登录态。"""
+    """验证中台登录使用用户名密码并保存 access_token。"""
     from story_med.clients.agent_api.agent_task_client import login_content_hub
     from story_med.config.app_config import StoryMedConfig
 
@@ -216,7 +218,7 @@ def test_login_content_hub_uses_username_and_password(tmp_path: Path) -> None:
 
         def json(self) -> Dict[str, Any]:
             """返回 token 响应。"""
-            return {"success": True, "data": {"logged_in": True}}
+            return {"success": True, "data": {"token_type": "Bearer", "access_token": "token-new"}}
 
     class FakeSession:
         """模拟 HTTP 会话。"""
@@ -235,6 +237,7 @@ def test_login_content_hub_uses_username_and_password(tmp_path: Path) -> None:
         origin="",
         referer="",
         adjust_base_url="https://hub.example",
+        adjust_auth_token="expired",
         adjust_origin="",
         adjust_referer="",
         adjust_accept="text/event-stream",
@@ -248,6 +251,7 @@ def test_login_content_hub_uses_username_and_password(tmp_path: Path) -> None:
 
     assert captured["url"] == "https://hub.example/api/auth/login"
     assert captured["json"] == {"username": "admin", "password": "password"}
+    assert config.adjust_auth_token == "Bearer token-new"
 
 
 def test_case_generation_message_uses_creative_brief() -> None:
@@ -439,7 +443,7 @@ def test_wait_for_terminal_history_retries_until_complete(monkeypatch: pytest.Mo
     )
     monkeypatch.setattr("story_med.executors.content_hub_runtime.sleep", lambda _seconds: None)
 
-    result = adapter._wait_for_terminal_history("task-1")
+    result = adapter._wait_for_terminal_history("task-1", perf_counter() + 10)
 
     assert result.body == complete_body
     assert calls == ["task-1", "task-1"]
@@ -465,6 +469,7 @@ def _build_config(tmp_path: Path) -> StoryMedConfig:
         origin="",
         referer="",
         adjust_base_url="https://hub.example",
+        adjust_auth_token="token",
         adjust_origin="",
         adjust_referer="",
         adjust_accept="text/event-stream",

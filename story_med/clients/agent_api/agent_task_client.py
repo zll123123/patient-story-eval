@@ -25,7 +25,7 @@ STREAM_TASK_TIMEOUT_SECONDS = 1800
 
 
 def login_content_hub(session: Session, config: StoryMedConfig) -> Dict[str, Any]:
-    """使用用户名密码登录内容中台并建立登录态。
+    """使用用户名密码登录内容中台并保存运行期访问令牌。
 
     Args:
         session: HTTP 会话。
@@ -47,6 +47,11 @@ def login_content_hub(session: Session, config: StoryMedConfig) -> Dict[str, Any
     )
     body = _json_body(response, AUTH_LOGIN_PATH)
     data = body.get("data") if isinstance(body.get("data"), dict) else {}
+    access_token = str(data.get("access_token") or "").strip()
+    token_type = str(data.get("token_type") or "Bearer").strip() or "Bearer"
+    if not access_token:
+        raise RuntimeError(f"内容中台登录响应缺少 access_token: {_mask_login_body(body)}")
+    config.adjust_auth_token = f"{token_type} {access_token}"
     return data
 
 
@@ -138,6 +143,7 @@ def stream_agent_task(
     config: StoryMedConfig,
     payload: Dict[str, Any],
     output_path: Path,
+    deadline: float,
 ) -> StoryApiResponse:
     """执行内容中台 Agent SSE 任务并保存原始流。
 
@@ -151,17 +157,19 @@ def stream_agent_task(
         流式接口响应摘要。
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    _raise_if_deadline_exceeded(deadline)
     response = _post_stream_with_retry(
         session,
         config,
         AGENT_TASK_STREAM_PATH,
         payload,
+        deadline,
     )
     _raise_for_stream_error(response)
     event_count = write_stream_chunks(
         response.iter_content(chunk_size=1024, decode_unicode=True),
         output_path,
-        timeout_seconds=STREAM_TASK_TIMEOUT_SECONDS,
+        deadline=deadline,
     )
     event_log_path = stream_event_log_path(output_path)
     events = _load_stream_events(event_log_path)
@@ -265,6 +273,7 @@ def stream_agent_adjustment_task(
     session_id: str,
     message: str,
     output_path: Path,
+    deadline: float,
 ) -> StoryApiResponse:
     """调用已生成患者故事调整 SSE 接口并保存原始流。
 
@@ -281,7 +290,7 @@ def stream_agent_adjustment_task(
         接口响应摘要。
     """
     payload = build_adjustment_payload(task_id, agent_type, session_id, message)
-    return stream_agent_task(session, config, payload, output_path)
+    return stream_agent_task(session, config, payload, output_path, deadline)
 
 
 def build_adjustment_payload(
@@ -325,6 +334,9 @@ def build_adjustment_headers(config: StoryMedConfig) -> Dict[str, str]:
         headers["Origin"] = config.adjust_origin.strip()
     if config.adjust_referer.strip():
         headers["Referer"] = config.adjust_referer.strip()
+    auth_token = _normalize_auth_token(config.adjust_auth_token)
+    if auth_token:
+        headers["Authorization"] = auth_token
     return headers
 
 
@@ -409,6 +421,7 @@ def _post_stream_with_retry(
     config: StoryMedConfig,
     path: str,
     payload: Dict[str, Any],
+    deadline: float,
 ) -> Response:
     """发送中台 SSE POST，未授权时重新登录并重试一次。"""
     response = session.post(
@@ -416,21 +429,36 @@ def _post_stream_with_retry(
         json=payload,
         headers=build_adjustment_headers(config),
         stream=True,
-        timeout=(30, None),
+        timeout=_stream_request_timeout(deadline),
         verify=config.verify_ssl,
     )
     if response.status_code == 401:
         response.close()
         login_content_hub(session, config)
+        _raise_if_deadline_exceeded(deadline)
         response = session.post(
             f"{config.adjust_base_url}{path}",
             json=payload,
             headers=build_adjustment_headers(config),
             stream=True,
-            timeout=(30, None),
+            timeout=_stream_request_timeout(deadline),
             verify=config.verify_ssl,
         )
     return response
+
+
+def _stream_request_timeout(deadline: float) -> tuple[float, float]:
+    """将任务截止时间转换为 requests 的连接和读取超时。"""
+    remaining = deadline - perf_counter()
+    if remaining <= 0:
+        raise TimeoutError("Agent 任务超过 30 分钟总时限")
+    return min(30.0, remaining), remaining
+
+
+def _raise_if_deadline_exceeded(deadline: float) -> None:
+    """在发起或继续中台请求前检查任务总截止时间。"""
+    if deadline <= perf_counter():
+        raise TimeoutError("Agent 任务超过 30 分钟总时限")
 
 
 def _get_json_with_retry(
@@ -467,6 +495,28 @@ def _is_unauthorized_response(response: Response) -> bool:
     return str(body.get("code") or "") in {"PCH-401-03", "PCH-401-01"}
 
 
+def _mask_login_body(body: Dict[str, Any]) -> Dict[str, Any]:
+    """屏蔽登录响应中的敏感字段。"""
+    masked = dict(body)
+    data = masked.get("data")
+    if isinstance(data, dict):
+        masked["data"] = {
+            key: "***MASKED***" if "token" in key.lower() else value
+            for key, value in data.items()
+        }
+    return masked
+
+
+def _normalize_auth_token(raw_token: str) -> str:
+    """标准化 Authorization 请求头值。"""
+    token = raw_token.strip()
+    if not token:
+        return ""
+    if token.lower().startswith("bearer "):
+        return token
+    return f"Bearer {token}"
+
+
 def _safe_json_body(response: Response) -> Dict[str, Any]:
     """安全解析 JSON 响应体。"""
     try:
@@ -491,14 +541,14 @@ def _json_body(response: Response, path: str) -> Dict[str, Any]:
 def write_stream_chunks(
     chunks: Iterable[str | bytes],
     output_path: Path,
-    timeout_seconds: int = STREAM_TASK_TIMEOUT_SECONDS,
+    deadline: float,
 ) -> int:
     """写入 SSE 分块内容。
 
     Args:
         chunks: SSE 分块迭代器。
         output_path: 原始流输出路径。
-        timeout_seconds: SSE 总执行时长上限。
+        deadline: 当前任务的绝对截止时间。
 
     Returns:
         识别到的 data 事件数量。
@@ -506,14 +556,13 @@ def write_stream_chunks(
     event_count = 0
     event_log_path = stream_event_log_path(output_path)
     line_buffer = ""
-    deadline = perf_counter() + timeout_seconds
     with output_path.open("w", encoding="utf-8") as file_obj, event_log_path.open(
         "w", encoding="utf-8"
     ) as event_obj:
         for chunk in chunks:
             if perf_counter() >= deadline:
                 raise TimeoutError(
-                    f"SSE 任务超过 {timeout_seconds} 秒未完成，转为 history 恢复"
+                    "Agent 任务超过 30 分钟总时限"
                 )
             if not chunk:
                 continue

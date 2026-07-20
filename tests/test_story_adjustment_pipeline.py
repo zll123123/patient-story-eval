@@ -70,6 +70,7 @@ def build_config() -> StoryMedConfig:
         origin="",
         referer="",
         adjust_base_url="https://adjust.example.com",
+        adjust_auth_token="token-1",
         adjust_origin="https://origin.example.com",
         adjust_referer="https://origin.example.com/",
         adjust_accept="text/event-stream;charset=UTF-8, text/event-stream",
@@ -114,7 +115,7 @@ def test_build_adjustment_headers_uses_config() -> None:
 
     assert headers["Accept"] == "text/event-stream;charset=UTF-8, text/event-stream"
     assert headers["Content-Type"] == "application/json;charset=UTF-8"
-    assert "Authorization" not in headers
+    assert headers["Authorization"] == "Bearer token-1"
     assert headers["Origin"] == "https://origin.example.com"
     assert headers["Referer"] == "https://origin.example.com/"
 

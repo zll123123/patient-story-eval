@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from time import sleep
+from time import perf_counter, sleep
 
 import pytest
 
@@ -22,7 +22,9 @@ def test_write_stream_chunks_generates_event_log_and_step_timings(
         'data: {"payload":{"raw":{"step_id":"1","status":"END"}}}\n\n',
     ]
 
-    event_count = agent_task_client.write_stream_chunks(chunks, output_path)
+    event_count = agent_task_client.write_stream_chunks(
+        chunks, output_path, deadline=perf_counter() + 10
+    )
     event_log_path = output_path.with_name("session_patient_case_stream_events.jsonl")
     events = [
         json.loads(line)
@@ -44,8 +46,10 @@ def test_write_stream_chunks_raises_when_total_timeout_reached(tmp_path: Path) -
         sleep(0.02)
         yield 'data: {"message_type":"HEARTBEAT"}\n\n'
 
-    with pytest.raises(TimeoutError, match="history 恢复"):
-        agent_task_client.write_stream_chunks(chunks(), output_path, timeout_seconds=0.01)
+    with pytest.raises(TimeoutError, match="30 分钟总时限"):
+        agent_task_client.write_stream_chunks(
+            chunks(), output_path, deadline=perf_counter() + 0.01
+        )
     assert output_path.exists()
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import mimetypes
+from time import perf_counter
 from pathlib import Path
 from typing import Any, Callable, Dict, List
 
@@ -20,6 +21,7 @@ from story_med.clients.agent_api.agent_task_client import (
     download_story_med_file,
     ensure_content_hub_auth,
     stream_agent_task,
+    STREAM_TASK_TIMEOUT_SECONDS,
     upload_story_med_file,
 )
 from story_med.clients.base.http_client import (
@@ -90,6 +92,7 @@ class PatientStoryGenerationExecutor:
             timer.update(task_id=task_id, session_id=session_id)
             if not task_id or not session_id:
                 raise RuntimeError(f"内容中台创建任务响应缺少 task_id/session_id: {task_api.body}")
+            task_deadline = perf_counter() + STREAM_TASK_TIMEOUT_SECONDS
             steps.append(
                 self._step(
                     "create_agent_task",
@@ -107,7 +110,9 @@ class PatientStoryGenerationExecutor:
                     task_id=task_id,
                     session_id=session_id,
                 ) as timer:
-                    stream_api = self._stream_task(case.case_id, task_id, start_payload)
+                    stream_api = self._stream_task(
+                        case.case_id, task_id, start_payload, task_deadline
+                    )
                     timer.update(
                         metadata={"event_count": stream_api.body.get("event_count", 0)}
                     )
@@ -141,7 +146,7 @@ class PatientStoryGenerationExecutor:
                 task_id=task_id,
                 session_id=session_id,
             ):
-                history_api = self._wait_for_terminal_history(task_id)
+                history_api = self._wait_for_terminal_history(task_id, task_deadline)
             steps.append(
                 self._step(
                     "get_agent_task_history",
@@ -245,13 +250,15 @@ class PatientStoryGenerationExecutor:
         return list_case_images_by_path(image_path.resolve())
 
     def _stream_task(
-        self, case_id: str, task_id: str, payload: Dict[str, Any]
+        self, case_id: str, task_id: str, payload: Dict[str, Any], deadline: float
     ) -> StoryApiResponse:
         """启动 SSE 任务并返回摘要响应。"""
         output_path = STORY_AUDITS_DIR / case_id / f"{task_id}_agent_task_stream.txt"
-        return stream_agent_task(self._session, self._config, payload, output_path)
+        return stream_agent_task(
+            self._session, self._config, payload, output_path, deadline
+        )
 
-    def _wait_for_terminal_history(self, task_id: str) -> StoryApiResponse:
+    def _wait_for_terminal_history(self, task_id: str, deadline: float) -> StoryApiResponse:
         """轮询 history，直到任务完整、失败或超时。"""
         return wait_for_terminal_history(
             self._session,
@@ -261,6 +268,7 @@ class PatientStoryGenerationExecutor:
                 normalize_content_hub_history(body)
             ),
             has_error=lambda body: bool(detect_content_hub_upstream_error(body)),
+            deadline=deadline,
         )
 
     def _download_history_artifacts(

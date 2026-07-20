@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from time import perf_counter
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -11,6 +12,7 @@ from requests import Session
 
 from story_med.clients.agent_api.agent_task_client import (
     DEFAULT_AGENT_TYPE,
+    STREAM_TASK_TIMEOUT_SECONDS,
     create_story_med_download_url,
     download_story_med_file,
     ensure_content_hub_auth,
@@ -75,6 +77,7 @@ class PatientStoryEditExecutor:
                 },
             )
         )
+        task_deadline = perf_counter() + STREAM_TASK_TIMEOUT_SECONDS
         _write_json(
             summary_path,
             {
@@ -116,6 +119,7 @@ class PatientStoryEditExecutor:
                         session_id=session_id,
                         message=message,
                         output_path=stream_path,
+                        deadline=task_deadline,
                     )
                     timer.update(
                         metadata={"event_count": stream_api.body.get("event_count", 0)}
@@ -148,7 +152,9 @@ class PatientStoryEditExecutor:
                     task_id=task_id,
                     session_id=session_id,
                 ):
-                    history_api = self._wait_for_terminal_history(task_id, remote_turn_id)
+                    history_api = self._wait_for_terminal_history(
+                        task_id, remote_turn_id, task_deadline
+                    )
                 normalized_history = normalize_content_hub_history(
                     history_api.body, remote_turn_id
                 )
@@ -220,7 +226,9 @@ class PatientStoryEditExecutor:
         _write_json(summary_path, result)
         return result
 
-    def _wait_for_terminal_history(self, task_id: str, remote_turn_id: str):
+    def _wait_for_terminal_history(
+        self, task_id: str, remote_turn_id: str, deadline: float
+    ):
         """轮询 history，直到编辑产物可用、失败或超时。"""
         return wait_for_terminal_history(
             self._session,
@@ -232,6 +240,7 @@ class PatientStoryEditExecutor:
             has_error=lambda body: bool(
                 detect_content_hub_upstream_error(body, remote_turn_id)
             ),
+            deadline=deadline,
         )
 
     def _should_poll_history(
