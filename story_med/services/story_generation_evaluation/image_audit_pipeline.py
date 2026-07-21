@@ -7,6 +7,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List
+from urllib.parse import urlparse
 
 from story_med.clients.llm.llm_client import call_llm_json
 from story_med.clients.llm.multimodal_llm_client import call_multimodal_json
@@ -173,7 +174,7 @@ def _compare_single_illustration(
             )
             image_path = _find_generated_image(
                 asset_dir / "generate_images",
-                str(illustration.get("image_path") or ""),
+                str(illustration.get("image_url") or ""),
             )
             result = call_multimodal_json(config, prompt, [image_path])
         node = _build_image_node_result(
@@ -356,7 +357,7 @@ def _build_consistency_images_payload(
     payload: List[Dict[str, Any]] = []
     for illustration in image_design.get("illustrations") or []:
         image_path = _find_generated_image(
-            asset_dir / "generate_images", str(illustration.get("image_path") or "")
+            asset_dir / "generate_images", str(illustration.get("image_url") or "")
         )
         payload.append(
             {
@@ -422,11 +423,17 @@ def _read_image_design(asset_dir: Path) -> Dict[str, Any]:
     return json.loads(files[0].read_text(encoding="utf-8"))
 
 
-def _find_generated_image(directory: Path, source_image_path: str) -> Path:
-    """根据设计文件中的图片名查找本地图片。"""
-    source_name = Path(source_image_path).name
+def _find_generated_image(directory: Path, source_image_url: str) -> Path:
+    """根据设计文件 image_url 查找本地下载图片。"""
+    source_name = Path(urlparse(source_image_url).path).name
+    if not source_name:
+        raise RuntimeError(f"图片 URL 缺少文件名: {source_image_url}")
+    source_stem = Path(source_name).stem
     matches = [
-        path for path in directory.glob("*.png") if path.name.endswith(source_name)
+        path
+        for path in directory.glob("*.png")
+        if path.name == source_name
+        or path.stem.startswith(f"{source_stem}_")
     ]
     if len(matches) != 1:
         raise RuntimeError(f"生成图片匹配异常: {source_name}, {matches}")

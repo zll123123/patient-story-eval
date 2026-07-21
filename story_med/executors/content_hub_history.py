@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -290,17 +291,43 @@ def _content_hub_file_group(file_item: Dict[str, Any], file_key: str) -> str:
     title = str(file_item.get("title") or "").lower()
     file_type = str(file_item.get("type") or "").lower()
     key = file_key.lower()
+    filename = key.rsplit("/", 1)[-1]
     if "病例" in title or "case_parse" in key:
         return "case_parse"
     if "大纲" in title or key.endswith("outline.md"):
         return "outline"
     if "正文" in title or key.endswith("story.md"):
         return "story"
+    filename_group = _filename_file_group(filename)
+    if filename_group is not None:
+        return filename_group
     if file_type in {"json", "image_list"} or "/images/" in key or "image" in title or "图片" in title:
         return "image"
     if file_type in {"html", "png"} or key.endswith(".html") or key.endswith(".png"):
         return "html"
-    return "html"
+    return _filename_file_group(filename)
+
+
+def _filename_file_group(filename: str) -> str | None:
+    """按带哈希文件名识别中台节点产物。"""
+    if re.fullmatch(r"patient_case_[0-9a-f]+\.md", filename):
+        return "case_parse"
+    if re.fullmatch(r"(?:outline|generate_outline)_[^/]+\.md", filename):
+        return "outline"
+    if re.fullmatch(r"(?:story|generate_story)_[^/]+\.md", filename):
+        return "story"
+    if filename == "image_design.json" or re.fullmatch(
+        r"(?:image|image_design|generate_images|image_outline)_[^/]+\.(?:json|md)",
+        filename,
+    ):
+        return "image"
+    if re.fullmatch(r"story_[^/]+\.(?:png|jpg|jpeg|webp)", filename):
+        return "image"
+    if re.fullmatch(r"(?:index|html|final|generate_final_image)_[^/]+\.html", filename):
+        return "html"
+    if re.fullmatch(r"(?:index|final|generate_final_image)_[^/]+\.png", filename):
+        return "html"
+    return None
 
 
 def _content_hub_failed_step(body: Dict[str, Any], expected_turn_id: str = "") -> str:

@@ -25,6 +25,7 @@ def run_edit_dialogue_case(
     app_config: StoryMedConfig,
     llm_config: StoryMedLlmConfig,
     dialogue_case_id: str,
+    run_audit: bool = True,
 ) -> Dict[str, Any]:
     """执行单条多轮患者故事编辑对话测试。
 
@@ -56,6 +57,7 @@ def run_edit_dialogue_case(
         ref_context=ref_context,
         reference_session_id=reference_session_id,
         input_content=input_content,
+        run_audit=run_audit,
     )
     result = {
         "case_id": dialogue_case["case_id"],
@@ -70,7 +72,8 @@ def run_edit_dialogue_case(
         "turn_results": turn_results,
     }
     _write_dialogue_result(dialogue_case["case_id"], result)
-    run_edit_dialogue_analysis(llm_config, result)
+    if run_audit:
+        run_edit_dialogue_analysis(llm_config, result)
     return result
 
 
@@ -159,6 +162,7 @@ def _run_dialogue_turns(
     ref_context: Dict[str, str],
     reference_session_id: str,
     input_content: str,
+    run_audit: bool = True,
 ) -> List[Dict[str, Any]]:
     """串行执行多轮编辑，全部成功后仅审核最终轮。"""
     passed_focuses: List[Dict[str, Any]] = []
@@ -188,7 +192,7 @@ def _run_dialogue_turns(
             )
         else:
             execution_failed = True
-    if turn_results and not execution_failed:
+    if run_audit and turn_results and not execution_failed:
         _audit_final_turn(
             llm_config,
             dialogue_case,

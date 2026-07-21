@@ -11,6 +11,8 @@ from story_med.commands import run_edit_dialogue_audit
 from story_med.commands import run_edit_dialogue_case
 from story_med.commands import run_patient_story_audit
 from story_med.commands import run_patient_story_deepeval
+from story_med.commands import run_patient_story_edit
+from story_med.commands import run_patient_story_generate
 
 CommandHandler = Callable[[list[str] | None], int]
 
@@ -23,9 +25,11 @@ def build_parser() -> argparse.ArgumentParser:
             "python3 -m story_med <command> [args]\n\n"
             "commands:\n"
             "  patient-story-full  运行患者故事生成+全链路审核+归因+上报\n"
+            "  patient-story-generate  只运行患者故事生成，不执行审核\n"
             "  patient-story-audit 只对已有生成产物重跑全链路审核+归因\n"
             "  clinical-extract   批量提取病例图片结构化基线\n"
             "  patient-story-edit-full  运行多轮编辑执行+审核+归因\n"
+            "  patient-story-edit  只运行多轮编辑，不执行审核\n"
             "  patient-story-edit-audit 只对已有编辑产物重跑审核+归因"
         ),
     )
@@ -38,9 +42,11 @@ def command_registry() -> dict[str, CommandHandler]:
     """返回子命令与处理函数映射。"""
     return {
         "patient-story-full": run_patient_story_deepeval.main,
+        "patient-story-generate": run_patient_story_generate.main,
         "patient-story-audit": run_patient_story_audit.main,
         "clinical-extract": run_clinical_extract.main,
         "patient-story-edit-full": run_edit_dialogue_case.main,
+        "patient-story-edit": run_patient_story_edit.main,
         "patient-story-edit-audit": run_edit_dialogue_audit.main,
     }
 

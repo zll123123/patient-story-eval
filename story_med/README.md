@@ -95,6 +95,20 @@ uv run story-med patient-story-full \
   --identifier patient-story-sm001-sm002
 ```
 
+只重跑指定患者故事生成，不执行审核、归因或打分：
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run story-med patient-story-generate \
+  --case-ids "SM_001,SM_006,SM_008"
+```
+
+单个 case：
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run story-med patient-story-generate \
+  --case-id "SM_001"
+```
+
 ### 4. 重跑已有产物的审核
 
 ```bash
@@ -111,6 +125,20 @@ uv run story-med patient-story-audit \
 
 ```bash
 UV_CACHE_DIR=.uv-cache uv run story-med patient-story-edit-full
+```
+
+只执行指定编辑 case，不执行编辑覆盖审核或归因：
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run story-med patient-story-edit \
+  --case-ids "EDG_001,EDG_002"
+```
+
+单个编辑 case：
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run story-med patient-story-edit \
+  --case-id "EDG_001"
 ```
 
 只执行指定编辑用例：
@@ -179,8 +207,10 @@ uv run story-med patient-story-full \
 | --- | --- |
 | `uv run story-med clinical-extract` | 提取病例图片结构化基线 |
 | `uv run story-med patient-story-full` | 运行患者故事生成 + 全链路审核 + 归因 + 打分 |
+| `uv run story-med patient-story-generate` | 只运行患者故事生成，不执行审核 |
 | `uv run story-med patient-story-audit` | 对已有生成产物重跑审核 + 归因 + 打分 |
 | `uv run story-med patient-story-edit-full` | 运行多轮编辑执行 + 审核 + 归因 |
+| `uv run story-med patient-story-edit` | 只运行多轮编辑，不执行审核 |
 | `uv run story-med patient-story-edit-audit` | 对已有编辑产物重跑审核 + 归因 |
 
 `--case-ids` 支持 `,`、`;`、`|` 分隔多个 case。

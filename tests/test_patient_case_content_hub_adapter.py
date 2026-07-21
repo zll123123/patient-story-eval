@@ -22,6 +22,7 @@ from story_med.executors.content_hub_history import (
     is_generation_history_complete,
     normalize_content_hub_history,
     normalize_content_hub_stream,
+    _content_hub_file_group,
 )
 from story_med.config.app_config import StoryMedConfig
 from story_med.models.case_model import StoryCaseConfig
@@ -83,6 +84,25 @@ def test_normalize_content_hub_history_maps_messages_and_artifacts() -> None:
     assert "病例解析完成" in result["messages"][0]["content"]
     assert result["artifacts"]["outline"][0]["oss_key"].endswith("outline.md")
     assert result["artifacts"]["html"][0]["oss_key"].endswith("index.html")
+
+
+@pytest.mark.parametrize(
+    ("file_name", "expected_group"),
+    [
+        ("patient_case_f6519ea8.md", "case_parse"),
+        ("outline_69524e53.md", "outline"),
+        ("story_4583457c.md", "story"),
+        ("image_design_69524e53.json", "image"),
+        ("story_3164357718_0_550907e5.png", "image"),
+        ("index_3f43c216.html", "html"),
+        ("index_3f43c216.png", "html"),
+    ],
+)
+def test_content_hub_file_group_supports_hashed_artifact_names(
+    file_name: str, expected_group: str
+) -> None:
+    """验证带哈希的中间产物文件名能映射到正确节点。"""
+    assert _content_hub_file_group({}, file_name) == expected_group
 
 
 def test_normalize_content_hub_stream_maps_files_to_history_structure(tmp_path: Path) -> None:
