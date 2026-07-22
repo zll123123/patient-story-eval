@@ -11,6 +11,17 @@ from deepeval.test_case.llm_test_case import LLMTestCase
 from story_med.config.settings import STORY_AUDITS_DIR
 
 
+# DeepEval/Confident AI 指标统一使用 0~1；本地 scorecard 仍保留业务分制。
+OUTLINE_FACT_MAX_SCORE = 20.0
+STORY_FACT_MAX_SCORE = 20.0
+STORY_COMPLIANCE_MAX_SCORE = 10.0
+IMAGE_DESIGN_MAX_SCORE = 10.0
+IMAGE_CONSISTENCY_MAX_SCORE = 10.0
+IMAGE_FACT_MAX_SCORE = 10.0
+FINAL_IMAGE_LAYOUT_MAX_SCORE = 20.0
+PATIENT_STORY_OVERALL_MAX_SCORE = 100.0
+
+
 class _PatientStoryBaseMetric(BaseMetric):
     """患者故事业务指标基类。"""
 
@@ -63,7 +74,9 @@ class OutlineFactMetric(_PatientStoryBaseMetric):
         return "outline_fact_metric"
 
     def _score(self, summary: Dict[str, Any]) -> float:
-        return float(_breakdown_score(summary, "outline_fact_score"))
+        return _normalized_breakdown_score(
+            summary, "outline_fact_score", OUTLINE_FACT_MAX_SCORE
+        )
 
     def _success(self, summary: Dict[str, Any]) -> bool:
         return bool(_audit_value(summary, "outline_passed"))
@@ -89,7 +102,9 @@ class StoryFactMetric(_PatientStoryBaseMetric):
         return "story_fact_metric"
 
     def _score(self, summary: Dict[str, Any]) -> float:
-        return float(_breakdown_score(summary, "story_fact_score"))
+        return _normalized_breakdown_score(
+            summary, "story_fact_score", STORY_FACT_MAX_SCORE
+        )
 
     def _success(self, summary: Dict[str, Any]) -> bool:
         return bool(_audit_value(summary, "story_passed"))
@@ -115,7 +130,9 @@ class ImageDesignMetric(_PatientStoryBaseMetric):
         return "image_design_metric"
 
     def _score(self, summary: Dict[str, Any]) -> float:
-        return float(_breakdown_score(summary, "image_design_score"))
+        return _normalized_breakdown_score(
+            summary, "image_design_score", IMAGE_DESIGN_MAX_SCORE
+        )
 
     def _success(self, summary: Dict[str, Any]) -> bool:
         return bool(_audit_value(summary, "image_design_passed"))
@@ -136,7 +153,9 @@ class StoryComplianceMetric(_PatientStoryBaseMetric):
         return "story_compliance_metric"
 
     def _score(self, summary: Dict[str, Any]) -> float:
-        return float(_breakdown_score(summary, "story_compliance_score"))
+        return _normalized_breakdown_score(
+            summary, "story_compliance_score", STORY_COMPLIANCE_MAX_SCORE
+        )
 
     def _success(self, summary: Dict[str, Any]) -> bool:
         return bool(_audit_value(summary, "story_compliance_passed"))
@@ -157,7 +176,9 @@ class ImageConsistencyMetric(_PatientStoryBaseMetric):
         return "image_consistency_metric"
 
     def _score(self, summary: Dict[str, Any]) -> float:
-        return float(_breakdown_score(summary, "image_consistency_score"))
+        return _normalized_breakdown_score(
+            summary, "image_consistency_score", IMAGE_CONSISTENCY_MAX_SCORE
+        )
 
     def _success(self, summary: Dict[str, Any]) -> bool:
         return bool(_audit_value(summary, "image_consistency_passed"))
@@ -178,7 +199,9 @@ class ImageFactMetric(_PatientStoryBaseMetric):
         return "image_fact_metric"
 
     def _score(self, summary: Dict[str, Any]) -> float:
-        return float(_breakdown_score(summary, "image_fact_score"))
+        return _normalized_breakdown_score(
+            summary, "image_fact_score", IMAGE_FACT_MAX_SCORE
+        )
 
     def _success(self, summary: Dict[str, Any]) -> bool:
         return bool(_audit_value(summary, "image_fact_passed"))
@@ -202,7 +225,9 @@ class FinalImageLayoutMetric(_PatientStoryBaseMetric):
         return "final_image_layout_metric"
 
     def _score(self, summary: Dict[str, Any]) -> float:
-        return float(_breakdown_score(summary, "final_image_layout_score"))
+        return _normalized_breakdown_score(
+            summary, "final_image_layout_score", FINAL_IMAGE_LAYOUT_MAX_SCORE
+        )
 
     def _success(self, summary: Dict[str, Any]) -> bool:
         return bool(_audit_value(summary, "final_image_layout_passed"))
@@ -224,7 +249,8 @@ class PatientStoryAuditMetric(_PatientStoryBaseMetric):
 
     def _score(self, summary: Dict[str, Any]) -> float:
         scorecard = summary.get("scorecard") or {}
-        return float(scorecard.get("total_score") or 0.0)
+        raw_score = float(scorecard.get("total_score") or 0.0)
+        return _normalize_score(raw_score, PATIENT_STORY_OVERALL_MAX_SCORE)
 
     def _success(self, summary: Dict[str, Any]) -> bool:
         overview = summary.get("audit_overview") or {}
@@ -284,3 +310,17 @@ def _breakdown_score(summary: Dict[str, Any], key: str) -> float:
     scorecard = summary.get("scorecard") or {}
     breakdown = scorecard.get("breakdown") or {}
     return float(breakdown.get(key) or 0.0)
+
+
+def _normalized_breakdown_score(
+    summary: Dict[str, Any], key: str, max_score: float
+) -> float:
+    """读取本地分数并转换为 DeepEval 使用的 0~1 分数。"""
+    return _normalize_score(_breakdown_score(summary, key), max_score)
+
+
+def _normalize_score(score: float, max_score: float) -> float:
+    """将业务分数归一化到 0~1，避免上报超出 DeepEval 分数范围。"""
+    if max_score <= 0:
+        raise ValueError("指标满分必须大于 0")
+    return round(min(max(score / max_score, 0.0), 1.0), 4)

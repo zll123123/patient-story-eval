@@ -152,10 +152,10 @@ def build_edit_coverage_prompt(
         "{{evaluation_focus}}": _format_evaluation_focus(
             edit_case.get("evaluation_focus")
         ),
-        "{{image_input}}": _truncate(output_content, 12000),
+        "{{image_input}}": output_content,
         "{{content_diff}}": "",
-        "{{input_content}}": _truncate(input_content, 12000),
-        "{{output_content}}": _truncate(output_content, 12000),
+        "{{input_content}}": input_content,
+        "{{output_content}}": output_content,
     }
     for placeholder, value in replacements.items():
         template = template.replace(placeholder, value)
@@ -327,10 +327,3 @@ def _extract_line_value(text: str, key: str) -> str:
     pattern = re.compile(rf"^{re.escape(key)}:\s*(.*)$", re.IGNORECASE | re.MULTILINE)
     match = pattern.search(text)
     return match.group(1).strip() if match else ""
-
-
-def _truncate(text: str, max_chars: int) -> str:
-    """限制输入给模型的文本长度。"""
-    if len(text) <= max_chars:
-        return text
-    return f"{text[:max_chars]}\n\n...[内容已截断]"
