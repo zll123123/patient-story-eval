@@ -76,6 +76,96 @@ def test_evaluate_edit_coverage_returns_missing_html_when_only_story_exists(
     assert result["artifact_coverage"]["missing_nodes"] == ["html"]
 
 
+def test_html_failure_is_rechecked_by_visual_model(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """验证 HTML 未通过的 focus 可由最终 PNG 视觉审核通过。"""
+    monkeypatch.setattr(service, "ASSETS_DIR", tmp_path / "assets")
+    monkeypatch.setattr(service, "EDIT_COVERAGE_PROMPT_FILE", _write_prompt(tmp_path))
+    image_prompt = tmp_path / "edit_image_coverage_validate.md"
+    _write_text(image_prompt, "{{message}}\n{{evaluation_focus}}")
+    monkeypatch.setattr(service, "EDIT_IMAGE_COVERAGE_PROMPT_FILE", image_prompt)
+    html_path = tmp_path / "assets/EC_001/session-1/adjustment/index_new.html"
+    image_path = tmp_path / "assets/EC_001/session-1/adjustment/index_new.png"
+    _write_text(html_path, "new html")
+    _write_text(image_path, "not a real image")
+
+    vision_calls: list[Path] = []
+
+    def fake_call_multimodal(_config: Any, _prompt: str, image_paths: list[Path]) -> str:
+        vision_calls.extend(image_paths)
+        return (
+            "Score: 10\nPass: true\nItem_Results:\n"
+            "- id: T1\n  passed: true\n  reason: visual ok\n  evidence: image evidence\n"
+            "Overall_Reason:\n1. visual ok"
+        )
+
+    monkeypatch.setattr(
+        service,
+        "call_llm_text",
+        lambda _config, _prompt: (
+            "Score: 5\nPass: false\nItem_Results:\n"
+            "- id: T1\n  passed: false\n  reason: html insufficient\n  evidence: \n"
+            "Overall_Reason:\n1. html insufficient"
+        ),
+    )
+    monkeypatch.setattr(service, "call_multimodal_text", fake_call_multimodal)
+
+    result = service.evaluate_edit_coverage(
+        FakeLlmConfig(),
+        _edit_case(),
+        "session-1",
+        {"downloaded_assets": [{"type": "html", "local_path": str(html_path)}, {"type": "png", "local_path": str(image_path)}]},
+        "fallback input",
+        "fallback output",
+        vision_config=FakeLlmConfig(),
+    )
+
+    assert result["passed"] is True
+    assert result["score"] == 10
+    assert result["evaluated_nodes"] == ["html", "image"]
+    assert vision_calls == [image_path]
+
+
+def test_html_success_does_not_call_visual_model(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """验证 HTML 全部通过时不调用视觉模型。"""
+    monkeypatch.setattr(service, "ASSETS_DIR", tmp_path / "assets")
+    monkeypatch.setattr(service, "EDIT_COVERAGE_PROMPT_FILE", _write_prompt(tmp_path))
+    html_path = tmp_path / "assets/EC_001/session-1/adjustment/index_new.html"
+    _write_text(html_path, "new html")
+    monkeypatch.setattr(
+        service,
+        "call_llm_text",
+        lambda _config, _prompt: (
+            "Score: 10\nPass: true\nItem_Results:\n"
+            "- id: T1\n  passed: true\n  reason: html ok\n  evidence: text\n"
+            "Overall_Reason:\n1. html ok"
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "call_multimodal_text",
+        lambda *_args, **_kwargs: pytest.fail("HTML 通过后不应调用视觉模型"),
+    )
+
+    result = service.evaluate_edit_coverage(
+        FakeLlmConfig(),
+        _edit_case(),
+        "session-1",
+        {"downloaded_assets": [{"type": "html", "local_path": str(html_path)}]},
+        "fallback input",
+        "fallback output",
+        vision_config=FakeLlmConfig(),
+    )
+
+    assert result["passed"] is True
+    assert result["evaluated_nodes"] == ["html"]
+
+
 def test_resolve_reference_artifact_session_id_uses_latest_original_case_session(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

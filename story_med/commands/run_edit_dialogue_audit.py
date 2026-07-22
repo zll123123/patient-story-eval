@@ -17,6 +17,7 @@ from story_med.config.app_config import StoryMedConfig
 from story_med.config.app_config import StoryMedLlmConfig
 from story_med.config.app_config import load_app_config
 from story_med.config.app_config import load_llm_config
+from story_med.config.app_config import load_vision_config
 from story_med.services.clinical_case_preparation.yaml_case_service import load_edit_dialogue_cases
 from story_med.services.story_edit_evaluation.edit_dialogue_pipeline import (
     audit_edit_dialogue_case,
@@ -38,8 +39,9 @@ def main(argv: list[str] | None = None) -> int:
     case_ids = _resolve_case_ids(args.case_id, args.case_ids)
     app_config = load_app_config()
     llm_config = load_llm_config()
+    vision_config = load_vision_config()
     results = [
-        _audit_one_case(app_config, llm_config, case_id)
+        _audit_one_case(app_config, llm_config, case_id, vision_config)
         for case_id in case_ids
     ]
     sys.stdout.write(json.dumps(_compact_results(results), ensure_ascii=False, indent=2) + "\n")
@@ -47,11 +49,16 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _audit_one_case(
-    app_config: StoryMedConfig, llm_config: StoryMedLlmConfig, case_id: str
+    app_config: StoryMedConfig,
+    llm_config: StoryMedLlmConfig,
+    case_id: str,
+    vision_config: Any = None,
 ) -> dict[str, Any]:
     """审核单个 case，失败时记录并继续批量执行。"""
     try:
-        return audit_edit_dialogue_case(app_config, llm_config, case_id)
+        if vision_config is None:
+            return audit_edit_dialogue_case(app_config, llm_config, case_id)
+        return audit_edit_dialogue_case(app_config, llm_config, case_id, vision_config)
     except Exception as exc:
         return write_audit_failure_result(case_id, "audit_execution_failed", str(exc))
 

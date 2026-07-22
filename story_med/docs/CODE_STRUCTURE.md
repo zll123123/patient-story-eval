@@ -158,7 +158,7 @@ story_med/
   - 编辑结果覆盖评估
 - `edit_dialogue_pipeline.py`
   - 多轮编辑编排
-- `edit_dialogue_attribution_pipeline.py`
+- `edit_dialogue_analysis_pipeline.py`
   - 多轮编辑失败归因
 
 ## 当前主链路
@@ -180,7 +180,7 @@ edit_dialogue_cases.yaml
   -> story_edit_evaluation/edit_dialogue_pipeline.py
   -> story_adjustment_pipeline.py
   -> edit_coverage_service.py
-  -> edit_dialogue_attribution_pipeline.py
+  -> edit_dialogue_analysis_pipeline.py
 ```
 
 ## 当前保留但非主入口

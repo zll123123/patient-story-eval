@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 from loguru import logger
 
 from story_med.config.app_config import StoryMedLlmConfig
+from story_med.config.app_config import StoryMedVisionConfig
 from story_med.config.settings import EDIT_AUDITS_DIR
 from story_med.services.story_edit_evaluation.edit_coverage_service import evaluate_edit_coverage, read_reference_content
 
@@ -18,6 +19,7 @@ EDIT_AUDIT_ANALYSIS_FILE = "edit_audit_analysis.json"
 def run_edit_dialogue_analysis(
     llm_config: StoryMedLlmConfig,
     dialogue_result: Dict[str, Any],
+    vision_config: StoryMedVisionConfig | None = None,
 ) -> Dict[str, Any] | None:
     """对失败的多轮编辑结果执行独立分析。
 
@@ -41,7 +43,7 @@ def run_edit_dialogue_analysis(
         trace = [_trace_entry(failed_turn, recheck_passed=False, source="final_failed_turn")]
         current_root_turn = failed_turn
         for prior_turn in _previous_turns(turn_results, int(failed_turn["turn_id"])):
-            recheck = _recheck_turn(llm_config, dialogue_result, prior_turn)
+            recheck = _recheck_turn(llm_config, dialogue_result, prior_turn, vision_config)
             trace.append(recheck)
             if recheck["recheck_passed"] is True:
                 break
@@ -100,6 +102,7 @@ def _recheck_turn(
     llm_config: StoryMedLlmConfig,
     dialogue_result: Dict[str, Any],
     turn_result: Dict[str, Any],
+    vision_config: StoryMedVisionConfig | None = None,
 ) -> Dict[str, Any]:
     """使用该轮产物和当轮累计预期重新审核。"""
     turn_case = _build_turn_runtime_case(dialogue_result, turn_result)
@@ -122,6 +125,7 @@ def _recheck_turn(
         adjustment_result,
         input_content,
         "",
+        vision_config=vision_config,
     )
     return _trace_entry(
         turn_result,

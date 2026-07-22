@@ -15,6 +15,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from story_med.config.app_config import load_app_config
 from story_med.config.app_config import load_llm_config
+from story_med.config.app_config import load_vision_config
 from story_med.services.story_edit_evaluation.edit_dialogue_pipeline import (
     run_edit_dialogue_case,
     write_dialogue_failure_result,
@@ -46,19 +47,23 @@ def main(argv: list[str] | None = None) -> int:
     clear_edit_dialogue_cases_artifacts(case_ids)
     app_config = load_app_config()
     llm_config = load_llm_config()
+    vision_config = load_vision_config()
     results = [
-        _run_one_case(app_config, llm_config, case_id) for case_id in case_ids
+        _run_one_case(app_config, llm_config, case_id, vision_config)
+        for case_id in case_ids
     ]
     sys.stdout.write(json.dumps(_compact_results(results), ensure_ascii=False, indent=2) + "\n")
     return 0 if results and all(result.get("overall_passed") is True for result in results) else 1
 
 
 def _run_one_case(
-    app_config: Any, llm_config: Any, case_id: str
+    app_config: Any, llm_config: Any, case_id: str, vision_config: Any = None
 ) -> dict[str, Any]:
     """执行单个编辑 case，异常时记录并继续批量执行。"""
     try:
-        return run_edit_dialogue_case(app_config, llm_config, case_id)
+        return run_edit_dialogue_case(
+            app_config, llm_config, case_id, vision_config=vision_config
+        )
     except Exception as exc:
         return write_dialogue_failure_result(case_id, "execution_orchestration_failed", str(exc))
 

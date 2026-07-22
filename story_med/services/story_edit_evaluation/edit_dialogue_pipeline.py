@@ -8,8 +8,9 @@ from typing import Any, Dict, List
 
 from story_med.config.app_config import StoryMedConfig
 from story_med.config.app_config import StoryMedLlmConfig
+from story_med.config.app_config import StoryMedVisionConfig
 from story_med.config.settings import EDIT_AUDITS_DIR
-from story_med.services.story_edit_evaluation.edit_dialogue_attribution_pipeline import run_edit_dialogue_analysis
+from story_med.services.story_edit_evaluation.edit_dialogue_analysis_pipeline import run_edit_dialogue_analysis
 from story_med.services.story_edit_evaluation.edit_coverage_service import (
     evaluate_edit_coverage,
     read_adjusted_content,
@@ -26,6 +27,7 @@ def run_edit_dialogue_case(
     llm_config: StoryMedLlmConfig,
     dialogue_case_id: str,
     run_audit: bool = True,
+    vision_config: StoryMedVisionConfig | None = None,
 ) -> Dict[str, Any]:
     """执行单条多轮患者故事编辑对话测试。
 
@@ -58,6 +60,7 @@ def run_edit_dialogue_case(
         reference_session_id=reference_session_id,
         input_content=input_content,
         run_audit=run_audit,
+        vision_config=vision_config,
     )
     result = {
         "case_id": dialogue_case["case_id"],
@@ -73,7 +76,7 @@ def run_edit_dialogue_case(
     }
     _write_dialogue_result(dialogue_case["case_id"], result)
     if run_audit:
-        run_edit_dialogue_analysis(llm_config, result)
+        run_edit_dialogue_analysis(llm_config, result, vision_config=vision_config)
     return result
 
 
@@ -81,6 +84,7 @@ def audit_edit_dialogue_case(
     app_config: StoryMedConfig,
     llm_config: StoryMedLlmConfig,
     dialogue_case_id: str,
+    vision_config: StoryMedVisionConfig | None = None,
 ) -> Dict[str, Any]:
     """基于已有编辑产物重跑覆盖审核与归因。"""
     dialogue_case = get_edit_dialogue_case(dialogue_case_id)
@@ -117,6 +121,7 @@ def audit_edit_dialogue_case(
         ref_context=ref_context,
         reference_session_id=reference_session_id,
         input_content=input_content,
+        vision_config=vision_config,
     )
     result = {
         "case_id": dialogue_case["case_id"],
@@ -131,7 +136,7 @@ def audit_edit_dialogue_case(
         "turn_results": turn_results,
     }
     _write_audit_result(dialogue_case["case_id"], result)
-    run_edit_dialogue_analysis(llm_config, result)
+    run_edit_dialogue_analysis(llm_config, result, vision_config=vision_config)
     return result
 
 
@@ -163,6 +168,7 @@ def _run_dialogue_turns(
     reference_session_id: str,
     input_content: str,
     run_audit: bool = True,
+    vision_config: StoryMedVisionConfig | None = None,
 ) -> List[Dict[str, Any]]:
     """串行执行多轮编辑，全部成功后仅审核最终轮。"""
     passed_focuses: List[Dict[str, Any]] = []
@@ -199,6 +205,7 @@ def _run_dialogue_turns(
             turn_results[-1],
             reference_session_id,
             input_content,
+            vision_config,
         )
     return turn_results
 
@@ -210,6 +217,7 @@ def _audit_existing_turns(
     ref_context: Dict[str, str],
     reference_session_id: str,
     input_content: str,
+    vision_config: StoryMedVisionConfig | None = None,
 ) -> List[Dict[str, Any]]:
     """基于已有编辑产物仅重跑最终轮审核。"""
     existing_turns = {
@@ -222,12 +230,24 @@ def _audit_existing_turns(
     passed_focuses: List[Dict[str, Any]] = []
     for turn in dialogue_case["turns"]:
         existing_turn = existing_turns.get(int(turn["turn_id"]) or 0, {})
-        turn_result = _execution_record_from_existing(dialogue_case, turn, existing_turn)
+        atomic_focus = _normalize_focus_items(turn["evaluation_focus"])
+        effective_focus = build_cumulative_evaluation_focus(
+            passed_focuses, atomic_focus
+        )
+        turn_result = _execution_record_from_existing(
+            dialogue_case, turn, existing_turn, effective_focus
+        )
         turn_results.append(turn_result)
         if execution_failed:
             continue
         if turn_result.get("execution_status") == "success":
-            passed_focuses.append({"turn_id": turn["turn_id"], "evaluation_focus": turn["evaluation_focus"], "involved_agents": turn.get("involved_agents", [])})
+            passed_focuses.append(
+                {
+                    "turn_id": turn["turn_id"],
+                    "evaluation_focus": atomic_focus,
+                    "involved_agents": turn.get("involved_agents", []),
+                }
+            )
         else:
             execution_failed = True
     if turn_results and not execution_failed:
@@ -237,6 +257,7 @@ def _audit_existing_turns(
             turn_results[-1],
             reference_session_id,
             input_content,
+            vision_config,
         )
     return turn_results
 
@@ -303,6 +324,7 @@ def _execution_record_from_existing(
     dialogue_case: Dict[str, Any],
     turn: Dict[str, Any],
     existing_turn: Dict[str, Any],
+    effective_focus: List[Dict[str, str]],
 ) -> Dict[str, Any]:
     """读取已有轮次的执行结果，不重建逐轮审核结果。"""
     adjustment_result = existing_turn.get("adjustment_result") if isinstance(existing_turn.get("adjustment_result"), dict) else {}
@@ -314,7 +336,7 @@ def _execution_record_from_existing(
         "intent": turn.get("intent", {}),
         "involved_agents": turn.get("involved_agents", []),
         "atomic_evaluation_focus": _normalize_focus_items(turn["evaluation_focus"]),
-        "effective_evaluation_focus": existing_turn.get("effective_evaluation_focus") or [],
+        "effective_evaluation_focus": effective_focus,
         "execution_status": "success" if success else "failed",
         "execution_passed": success,
         "adjustment_result": adjustment_result,
@@ -327,6 +349,7 @@ def _audit_final_turn(
     turn_result: Dict[str, Any],
     session_id: str,
     input_content: str,
+    vision_config: StoryMedVisionConfig | None = None,
 )-> None:
     """仅审核最终轮并写入最终轮审核结果。"""
     turn_case = _runtime_edit_case(
@@ -341,6 +364,7 @@ def _audit_final_turn(
         session_id,
         turn_result.get("adjustment_result") or {},
         input_content,
+        vision_config,
     )
     turn_result["audit_status"] = "passed" if validation.get("passed") else "failed"
     turn_result["edit_coverage_validation"] = validation
@@ -355,6 +379,7 @@ def _validate_turn_result(
     session_id: str,
     adjustment_result: Dict[str, Any],
     input_content: str,
+    vision_config: StoryMedVisionConfig | None = None,
 ) -> Dict[str, Any]:
     """审核单轮调整结果。"""
     if not adjustment_result.get("success"):
@@ -367,6 +392,7 @@ def _validate_turn_result(
         adjustment_result,
         input_content,
         output_content,
+        vision_config=vision_config,
     )
 
 

@@ -34,7 +34,7 @@ edit_dialogue_cases:
 
   - case_id: EDG_002
     ref_clinical_case_id: SM_002
-    summary: 调整图片细节并同步优化图片在长图中的展示占比。
+    summary: 调整图片细节并优化图片在长图中的展示占比。
     turn_count: 2
     turns:
       - turn_id: 1
@@ -47,7 +47,9 @@ edit_dialogue_cases:
         involved_agents:
           - image
           - html
-        evaluation_focus: 应重新调整指定图片的局部画面细节，使人物表情和动作更自然；最终 HTML/长图应同步使用调整后的图片。
+        evaluation_focus:
+          - id: T1
+            description: 指定图片中的人物表情和动作应更自然，最终画面应呈现自然协调的状态。
       - turn_id: 2
         message: 这张图在页面里占得有点大，展示尺寸稍微收一点就行。
         intent:
@@ -193,7 +195,9 @@ edit_dialogue_cases:
             - compliance_statement
         involved_agents:
           - html
-        evaluation_focus: 最终 HTML/长图底部或相关位置的合规说明、风险提示或免责声明应被删除。
+        evaluation_focus:
+          - id: T1
+            description: 最终 HTML/长图底部的合规说明模块及其正文应被删除。
       - turn_id: 2
         message: 页面排版再紧凑一点，重点信息别分得太散。
         intent:

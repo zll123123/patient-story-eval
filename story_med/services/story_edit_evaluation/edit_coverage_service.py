@@ -11,9 +11,11 @@ from story_med.clients.agent_api.agent_task_client import (
     find_agent_task_by_remote_task_id,
 )
 from story_med.clients.llm.llm_client import call_llm_text
+from story_med.clients.llm.multimodal_llm_client import call_multimodal_text
 from story_med.clients.base.http_client import create_session
 from story_med.config.app_config import StoryMedConfig
 from story_med.config.app_config import StoryMedLlmConfig
+from story_med.config.app_config import StoryMedVisionConfig
 from story_med.config.settings import (
     ASSETS_DIR,
     EDIT_RUNS_DIR,
@@ -23,6 +25,7 @@ from story_med.config.settings import (
 from story_med.utils.timing import TimingCollector
 
 EDIT_COVERAGE_PROMPT_FILE = PROMPTS_DIR / "edit_coverage_validate.md"
+EDIT_IMAGE_COVERAGE_PROMPT_FILE = PROMPTS_DIR / "edit_image_coverage_validate.md"
 
 
 def resolve_reference_context(
@@ -105,6 +108,7 @@ def evaluate_edit_coverage(
     adjustment_result: Dict[str, Any],
     fallback_input_content: str,
     fallback_output_content: str,
+    vision_config: StoryMedVisionConfig | None = None,
 ) -> Dict[str, Any]:
     """只基于最终长图审核编辑修改覆盖情况。"""
     timings = TimingCollector()
@@ -115,27 +119,36 @@ def evaluate_edit_coverage(
         result = _missing_html_validation()
         result["execution_stages"] = timings.to_list()
         return result
-    with timings.stage("edit_coverage_audit", "audit", session_id=session_id):
-        parsed = _evaluate_edit_coverage_result(
+    with timings.stage("edit_html_coverage_audit", "audit", session_id=session_id):
+        html_result = _evaluate_edit_coverage_result(
             llm_config,
             edit_case,
             fallback_input_content,
             output_content or fallback_output_content,
         )
-    node_result = {"node": "html", "artifact_present": True, **parsed}
+    final_result = _merge_html_and_image_results(
+        vision_config=vision_config,
+        edit_case=edit_case,
+        html_result=html_result,
+        image_path=_read_adjusted_image_path(edit_case["case_id"], session_id, adjustment_result),
+        timings=timings,
+    )
     return {
         "metric_name": "修改覆盖",
-        "score": parsed.get("score", 0),
-        "passed": bool(parsed.get("passed")),
+        "score": final_result["score"],
+        "passed": final_result["passed"],
         "required_nodes": ["html"],
+        "evaluated_nodes": final_result["evaluated_nodes"],
         "artifact_coverage": {
             "passed": True,
             "present_nodes": ["html"],
             "missing_nodes": [],
         },
-        "node_results": [node_result],
-        "reason": parsed.get("reason", ""),
-        "evidence": parsed.get("evidence", ""),
+        "node_results": final_result["node_results"],
+        "reason": final_result["reason"],
+        "evidence": final_result["evidence"],
+        "html_validation": html_result,
+        "image_validation": final_result["image_validation"],
         "execution_stages": timings.to_list(),
     }
 
@@ -162,8 +175,13 @@ def build_edit_coverage_prompt(
     return template
 
 
-def parse_edit_coverage_result(raw_result: str) -> Dict[str, Any]:
+def parse_edit_coverage_result(
+    raw_result: str, evaluation_focus: Any = None
+) -> Dict[str, Any]:
     """解析修改覆盖审核返回文本。"""
+    json_result = _parse_json_coverage_result(raw_result)
+    if json_result is not None:
+        return json_result
     score_match = re.search(r"Score:\s*(\d+)", raw_result, re.IGNORECASE)
     pass_match = re.search(r"Pass:\s*(true|false)", raw_result, re.IGNORECASE)
     score = int(score_match.group(1)) if score_match else 0
@@ -171,12 +189,85 @@ def parse_edit_coverage_result(raw_result: str) -> Dict[str, Any]:
         raw_result, "Overall_Reason"
     )
     evidence = _extract_line_value(raw_result, "Evidence")
+    item_results = _parse_item_results(raw_result)
+    if not item_results:
+        item_results = _build_default_item_results(evaluation_focus, bool(pass_match and pass_match.group(1).lower() == "true"))
     return {
         "score": score,
         "passed": pass_match.group(1).lower() == "true" if pass_match else score >= 8,
         "reason": reason,
         "evidence": evidence,
+        "item_results": item_results,
     }
+
+
+def _parse_json_coverage_result(raw_result: str) -> Dict[str, Any] | None:
+    """解析视觉模型返回的 JSON 结构。"""
+    try:
+        parsed = json.loads(raw_result)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    item_results = parsed.get("item_results") or parsed.get("Item_Results") or []
+    if not isinstance(item_results, list):
+        item_results = []
+    normalized_items = [
+        {
+            "id": str(item.get("id") or ""),
+            "passed": bool(item.get("passed")),
+            "reason": str(item.get("reason") or ""),
+            "evidence": str(item.get("evidence") or ""),
+        }
+        for item in item_results
+        if isinstance(item, dict)
+    ]
+    passed = bool(parsed.get("passed", parsed.get("Pass", False)))
+    return {
+        "score": int(parsed.get("score", parsed.get("Score", 0)) or 0),
+        "passed": passed,
+        "reason": str(parsed.get("reason") or parsed.get("Overall_Reason") or ""),
+        "evidence": str(parsed.get("evidence") or ""),
+        "item_results": normalized_items,
+    }
+
+
+def _parse_item_results(raw_result: str) -> list[Dict[str, Any]]:
+    """解析提示词返回的逐项 focus 结果。"""
+    pattern = re.compile(
+        r"-\s*id:\s*(?P<id>[^\n]+)\s*\n"
+        r"\s*passed:\s*(?P<passed>true|false)\s*\n"
+        r"\s*reason:\s*(?P<reason>.*?)\s*\n"
+        r"\s*evidence:\s*(?P<evidence>.*?)(?=\n\s*-\s*id:|\n\s*Overall_Reason:|\Z)",
+        re.IGNORECASE | re.DOTALL,
+    )
+    return [
+        {
+            "id": match.group("id").strip(),
+            "passed": match.group("passed").lower() == "true",
+            "reason": match.group("reason").strip(),
+            "evidence": match.group("evidence").strip(),
+        }
+        for match in pattern.finditer(raw_result)
+    ]
+
+
+def _build_default_item_results(
+    evaluation_focus: Any, passed: bool
+) -> list[Dict[str, Any]]:
+    """为未返回逐项结构的结果建立明确的整体项结果。"""
+    if not isinstance(evaluation_focus, list):
+        return []
+    return [
+        {
+            "id": str(item.get("id") or ""),
+            "passed": passed,
+            "reason": "模型未返回逐项结果，沿用整体判断。",
+            "evidence": "",
+        }
+        for item in evaluation_focus
+        if isinstance(item, dict)
+    ]
 
 
 def write_edit_coverage_result(case_id: str, result: Dict[str, Any]) -> None:
@@ -197,8 +288,100 @@ def _evaluate_edit_coverage_result(
     """调用 LLM 判断修改覆盖是否满足测试预期。"""
     prompt = build_edit_coverage_prompt(edit_case, input_content, output_content)
     raw_result = call_llm_text(llm_config, prompt)
-    parsed = parse_edit_coverage_result(raw_result)
+    parsed = parse_edit_coverage_result(raw_result, edit_case.get("evaluation_focus"))
     return {"raw_result": raw_result, **parsed}
+
+
+def _merge_html_and_image_results(
+    vision_config: StoryMedVisionConfig | None,
+    edit_case: Dict[str, Any],
+    html_result: Dict[str, Any],
+    image_path: Path | None,
+    timings: TimingCollector,
+) -> Dict[str, Any]:
+    """优先使用 HTML 结果，必要时用 PNG 复核失败 focus。"""
+    html_items = html_result.get("item_results") or []
+    failed_focus = [item for item in html_items if not item.get("passed")]
+    image_result: Dict[str, Any] = {"status": "not_run", "item_results": []}
+    if failed_focus and vision_config and image_path:
+        with timings.stage("edit_image_coverage_audit", "audit"):
+            image_result = _evaluate_image_coverage_result(
+                vision_config, edit_case, failed_focus, image_path
+            )
+    final_items = _merge_item_results(html_items, image_result.get("item_results") or [])
+    passed_count = sum(1 for item in final_items if item.get("passed"))
+    total_count = len(final_items)
+    passed = total_count > 0 and passed_count == total_count
+    score = round(passed_count / total_count * 10) if total_count else 0
+    return {
+        "score": score,
+        "passed": passed,
+        "evaluated_nodes": ["html"] + (["image"] if image_result.get("status") == "success" else []),
+        "node_results": [{"node": "html", "artifact_present": True, **html_result}]
+        + ([{"node": "image", "artifact_present": True, **image_result}] if image_result.get("status") == "success" else []),
+        "reason": _merge_reasons(final_items),
+        "evidence": _merge_evidence(final_items),
+        "image_validation": image_result,
+    }
+
+
+def _merge_item_results(
+    html_items: list[Dict[str, Any]], image_items: list[Dict[str, Any]]
+) -> list[Dict[str, Any]]:
+    """按 focus ID 合并 HTML 和 PNG 的逐项结果。"""
+    image_by_id = {str(item.get("id")): item for item in image_items}
+    merged: list[Dict[str, Any]] = []
+    for item in html_items:
+        current = dict(item)
+        image_item = image_by_id.get(str(item.get("id")))
+        if not current.get("passed") and image_item:
+            current = {**current, **image_item, "source": "image"}
+        else:
+            current["source"] = "html"
+        merged.append(current)
+    return merged
+
+
+def _merge_reasons(items: list[Dict[str, Any]]) -> str:
+    """拼接逐项审核结论。"""
+    return "\n".join(
+        f"{item.get('id')}: {item.get('reason') or '无判断理由'}"
+        for item in items
+    )
+
+
+def _merge_evidence(items: list[Dict[str, Any]]) -> str:
+    """拼接逐项审核证据。"""
+    return "\n".join(
+        f"{item.get('id')}: {item.get('evidence') or ''}" for item in items
+    )
+
+
+def _evaluate_image_coverage_result(
+    vision_config: StoryMedVisionConfig,
+    edit_case: Dict[str, Any],
+    failed_focus: list[Dict[str, Any]],
+    image_path: Path,
+) -> Dict[str, Any]:
+    """使用最终 PNG 复核 HTML 未通过的 focus。"""
+    prompt = _build_image_coverage_prompt(edit_case, failed_focus)
+    raw_result = call_multimodal_text(vision_config, prompt, [image_path])
+    parsed = parse_edit_coverage_result(raw_result, failed_focus)
+    return {"status": "success", "raw_result": raw_result, **parsed}
+
+
+def _build_image_coverage_prompt(
+    edit_case: Dict[str, Any], failed_focus: list[Dict[str, Any]]
+) -> str:
+    """构建视觉模型复核提示词。"""
+    template = EDIT_IMAGE_COVERAGE_PROMPT_FILE.read_text(encoding="utf-8")
+    replacements = {
+        "{{message}}": str(edit_case.get("message") or ""),
+        "{{evaluation_focus}}": _format_evaluation_focus(failed_focus),
+    }
+    for placeholder, value in replacements.items():
+        template = template.replace(placeholder, value)
+    return template
 
 
 def _read_adjusted_long_image_content(
@@ -215,6 +398,22 @@ def _read_adjusted_long_image_content(
         (ASSETS_DIR / edit_case_id / session_id / "adjustment").glob("index_*.html")
     )
     return _read_first_existing(candidates, required=False)
+
+
+def _read_adjusted_image_path(
+    edit_case_id: str,
+    session_id: str,
+    adjustment_result: Dict[str, Any],
+) -> Path | None:
+    """读取最终轮 PNG 产物路径。"""
+    for asset in adjustment_result.get("downloaded_assets") or []:
+        local_path = Path(str(asset.get("local_path") or ""))
+        if local_path.suffix.lower() == ".png" and local_path.exists():
+            return local_path
+    candidates = sorted(
+        (ASSETS_DIR / edit_case_id / session_id / "adjustment").glob("index_*.png")
+    )
+    return candidates[0] if candidates else None
 
 
 def _missing_html_validation() -> Dict[str, Any]:
